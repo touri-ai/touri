@@ -1,4 +1,5 @@
 ALTER TABLE threads ADD COLUMN anchor_message_id TEXT;
+CREATE INDEX threads_channel_root ON threads(group_id, created_at, id) WHERE group_thread_id IS NULL AND parent_thread_id IS NULL AND archived_at IS NULL;
 CREATE UNIQUE INDEX threads_anchor_message ON threads(parent_thread_id, anchor_message_id) WHERE anchor_message_id IS NOT NULL;
 UPDATE routines SET continuity = 'main-thread', results_thread_id = NULL WHERE continuity = 'new-thread';
 INSERT OR REPLACE INTO schema_meta(key, value) VALUES ('explicit_threads_version', '1');

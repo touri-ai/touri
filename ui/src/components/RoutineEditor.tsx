@@ -96,18 +96,6 @@ export const RoutineEditor = ({
   const isScript = draft.kind === "script"
   const bot = bots.find((bot) => bot.id === draft.botId)
   const botGroups = groups.filter((group) => isScript || group.memberIds.includes(draft.botId))
-  const defaultGroup = botGroups.reduce<(typeof botGroups)[number] | undefined>(
-    (oldest, candidate) =>
-      !oldest ||
-      candidate.createdAt < oldest.createdAt ||
-      (candidate.createdAt === oldest.createdAt && candidate.id < oldest.id)
-        ? candidate
-        : oldest,
-    undefined,
-  )
-  const mainDestination = defaultGroup
-    ? t("Conversa principal do canal {group}", { group: defaultGroup.name })
-    : t("Conversa principal")
   const group = groups.find((group) => group.id === draft.groupId)
   const isGroupUnavailable = !!draft.groupId && !botGroups.some((candidate) => candidate.id === draft.groupId)
   const unavailableGroupLabel = group
@@ -181,7 +169,7 @@ export const RoutineEditor = ({
         ? draft.resultsThreadId
           ? t("Nesta conversa")
           : t("Conversa de resultados")
-        : mainDestination
+        : t("Conversa principal")
 
   return (
     <Modal
@@ -406,7 +394,7 @@ export const RoutineEditor = ({
                     )}
                     {!isScript && (
                       <>
-                        <option value="main-thread">{mainDestination}</option>
+                        <option value="main-thread">{t("Conversa principal")}</option>
                         <option value="new-thread">{t("Nova thread a cada execução")}</option>
                         <option value="results-thread">
                           {draft.resultsThreadId && !draft.groupId ? t("Nesta conversa") : t("Conversa de resultados")}

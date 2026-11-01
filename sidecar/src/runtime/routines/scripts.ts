@@ -217,7 +217,12 @@ const getOutput = async (
 const postResult = (kernel: Kernel, routine: Routine, output: string): string => {
   const store = kernel.services.use("store.api")
   if (!store || !routine.groupId) throw new Error("Script channel unavailable")
-  const thread = createGroupStore(kernel).getMainThread(routine.groupId)
+  const selected =
+    routine.continuity === "results-thread" && routine.resultsThreadId
+      ? store.getThread({ threadId: routine.resultsThreadId })
+      : null
+  const thread =
+    selected?.groupId === routine.groupId ? selected : createGroupStore(kernel).getMainThread(routine.groupId)
   if (!thread) throw new Error("Script channel unavailable")
   const inserted = store.insertMessage({
     message: {

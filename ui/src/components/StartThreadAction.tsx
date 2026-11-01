@@ -35,12 +35,13 @@ export const StartThreadAction = ({
     }
   }
 
+  const count = thread?.replyCount ?? 0
+  const replies = count === 1 ? t("1 resposta") : t("{count} respostas", { count })
+
   return (
     <div className={thread ? "message-thread-replies" : "message-start-thread"}>
       <button type="button" className="text-button" disabled={busy} onClick={() => void start()}>
-        {thread
-          ? t("{count} respostas", { count: thread.replyCount ?? 0 })
-          : t(busy ? "Abrindo thread…" : "Iniciar thread")}
+        {thread ? replies : t(busy ? "Abrindo thread…" : "Iniciar thread")}
       </button>
       {error && <span role="alert">{t("Não foi possível iniciar a thread. Tente novamente.")}</span>}
     </div>

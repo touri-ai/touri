@@ -1,5 +1,6 @@
 import { mkdir } from "node:fs/promises"
 import { join } from "node:path"
+import AxeBuilder from "@axe-core/playwright"
 import { expect, test } from "@playwright/test"
 import { showBotRoutines, showWorkMode } from "./home-navigation"
 
@@ -65,3 +66,31 @@ for (const width of [1440, 390]) {
     })
   }
 }
+
+test.describe("touch message thread", () => {
+  test.use({ hasTouch: true, viewport: { width: 390, height: 900 } })
+
+  test("opens a bot message without hover and stays quiet without a mention", async ({ page }) => {
+    await page.goto("/test/e2e/explicit-threads-harness.html?theme=light")
+    await showWorkMode(page)
+    await page.getByRole("button", { name: /^Planejamento(?:,|$)/ }).click()
+    const reply = page.locator('[data-message-row="thread-demo-reply"]')
+    const action = reply.getByRole("button", { name: "Iniciar thread" })
+
+    await expect(reply.locator(".message-start-thread")).toHaveCSS("opacity", "1")
+    await action.tap()
+    await expect(page.locator('[data-message-row="context-thread-demo-reply"]')).toBeVisible()
+    const composer = page.getByRole("textbox", { name: /Mensagem/ })
+    await composer.fill("Vou revisar o plano por aqui.")
+    await composer.press("Enter")
+
+    await expect(page.locator(".chat-message-list")).toContainText("Vou revisar o plano por aqui.")
+    await expect(page.locator('.chat-message-list [data-message-author="bot"]')).toHaveCount(1)
+    const accessibility = await new AxeBuilder({ page }).include(".thread-context-header").analyze()
+    expect(accessibility.violations).toEqual([])
+    await page.getByRole("button", { name: "Voltar à conversa", exact: true }).click()
+    await expect(page.getByRole("button", { name: "1 resposta", exact: true })).toBeVisible()
+    const repliesAccessibility = await new AxeBuilder({ page }).include(".message-thread-replies").analyze()
+    expect(repliesAccessibility.violations).toEqual([])
+  })
+})

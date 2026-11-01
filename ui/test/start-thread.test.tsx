@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import type { Message, Thread } from "@touri/contracts"
 import { afterEach, expect, test, vi } from "vitest"
 import { createMockApi } from "../src/api/mock"
+import { VirtualMessageList } from "../src/components/ChatPanel"
 import { StartThreadAction } from "../src/components/StartThreadAction"
 
 afterEach(cleanup)
@@ -37,14 +38,14 @@ test.each(["user", "assistant"] as const)("message action starts an anchored thr
   )
 })
 
-test("reply counter opens the existing thread without creating another", () => {
+test.each([1, 3])("reply counter with %s replies opens the existing thread", (count) => {
   const api = createMockApi()
   const request = vi.spyOn(api, "request")
   const onSelect = vi.fn()
-  const thread = { id: "thread-plan", replyCount: 3 } as Thread
+  const thread = { id: "thread-plan", replyCount: count } as Thread
   render(<StartThreadAction message={message} api={api} thread={thread} onSelect={onSelect} />)
 
-  fireEvent.click(screen.getByRole("button", { name: "3 respostas" }))
+  fireEvent.click(screen.getByRole("button", { name: count === 1 ? "1 resposta" : "3 respostas" }))
 
   expect(onSelect).toHaveBeenCalledWith(thread.id)
   expect(request).not.toHaveBeenCalled()
@@ -59,4 +60,24 @@ test("failed creation keeps the message action available and explains recovery",
 
   expect(await screen.findByRole("alert")).toHaveTextContent("Não foi possível iniciar a thread")
   expect(screen.getByRole("button", { name: "Iniciar thread" })).toBeEnabled()
+})
+
+test("an archived child leaves the message action available to restore it", () => {
+  const api = createMockApi()
+  const base = api.getState().threads[0]
+  if (!base) throw new Error("Missing synthetic thread")
+  const archived = { ...base, anchorMessageId: message.id, archivedAt: 1, replyCount: 3 }
+  render(
+    <VirtualMessageList
+      messages={[message]}
+      anchoredThreads={[archived]}
+      api={api}
+      onSelectThread={vi.fn()}
+      onSwitchBranch={vi.fn()}
+      onRetry={vi.fn()}
+    />,
+  )
+
+  expect(screen.getByRole("button", { name: "Iniciar thread" })).toBeEnabled()
+  expect(screen.queryByRole("button", { name: "3 respostas" })).toBeNull()
 })

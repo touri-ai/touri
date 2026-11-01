@@ -3263,13 +3263,13 @@ test("a channel whose first member is remote still stores plain messages locally
   expect(scenario.order).toEqual([scenario.bots[1]?.id ?? ""])
 })
 
-test("routine defaults use the existing channel even when the bot uses task mode", async () => {
+test("channel routine defaults reuse the existing channel even when the bot uses task mode", async () => {
   const f = await fixture()
   const engine = routineEngine(f)
   const botId = f.bots[1]?.id ?? ""
   f.db.query("UPDATE bots SET automatic_conversation_mode = 'task' WHERE id = ?").run(botId)
   const created = engine.createRoutine({
-    input: groupRoutine(f, { groupId: null, continuity: "main-thread", resultsThreadId: null, enabled: true }),
+    input: groupRoutine(f, { continuity: "main-thread", resultsThreadId: null, enabled: true }),
     forceDisabled: false,
   })
   if (!created.success) throw new Error(created.error)
@@ -3376,6 +3376,15 @@ test("thread action rejects a message from another conversation", async () => {
 test("thread tool uses the current human request, never channel history or automatic work", async () => {
   const outcomes: boolean[] = []
   const f = await fixture(async (ctx, complete) => {
+    const getPathMessage = f.store.getPathMessage
+    if (!getPathMessage) throw new Error("Missing request reader")
+    f.host.kernel.services.provide("store.api", {
+      ...f.store,
+      getPathMessage: (input) => {
+        expect(input.leafId).toBe(input.messageId)
+        return getPathMessage(input)
+      },
+    })
     const result = await createThreadTool(f.host.kernel).handler({ ctx, args: { title: "Planejamento" } })
     outcomes.push(result.success)
     complete("Concluído")
@@ -3456,4 +3465,51 @@ test("an anchored thread cannot become the main routine destination when the cha
   await f.request(`/threads/${f.thread.id}`, { archived: true }, "PATCH")
 
   expect(f.data.getMainThread(f.group.id)).toBeNull()
+})
+
+test.each(["main-thread", "results-thread", "new-thread"] as const)(
+  "a private %s routine stays private when its bot belongs to channels",
+  async (continuity) => {
+    const f = await fixture()
+    const engine = routineEngine(f)
+    const bot = f.bots[1]
+    if (!bot?.mainThreadId) throw new Error("Missing private bot conversation")
+    const created = engine.createRoutine({
+      input: groupRoutine(f, {
+        groupId: null,
+        continuity,
+        resultsThreadId: continuity === "results-thread" ? bot.mainThreadId : null,
+        prompt: "Private routine canary",
+      }),
+      forceDisabled: false,
+    })
+    if (!created.success) throw new Error(created.error)
+
+    const started = engine.runRoutine({ routineId: created.routine.id, triggerSource: "manual" })
+    if (!started.success) throw new Error(started.error)
+    const destination = f.store.getThread({ threadId: started.routineRun.threadId ?? "" })
+
+    expect(destination).toMatchObject({ botId: bot.id, groupId: null })
+    expect(f.store.activePath({ threadId: f.thread.id })).toEqual([])
+    expect(f.data.threads(f.group.id)).toHaveLength(1)
+  },
+)
+
+test("a channel routine preserves its explicitly selected results conversation", async () => {
+  const f = await fixture()
+  const engine = routineEngine(f)
+  const selected = f.data.createThread(f.group, "Selected results")
+  const created = engine.createRoutine({
+    input: groupRoutine(f, { resultsThreadId: selected.id, prompt: "@dev review results" }),
+    forceDisabled: false,
+  })
+  if (!created.success) throw new Error(created.error)
+
+  const started = engine.runRoutine({ routineId: created.routine.id, triggerSource: "manual" })
+  if (!started.success) throw new Error(started.error)
+  await until(() => engine.listRoutineRuns(created.routine.id)[0]?.status === "succeeded")
+
+  expect(started.routineRun.threadId).toBe(selected.id)
+  expect(f.store.activePath({ threadId: f.thread.id })).toEqual([])
+  expect(f.store.activePath({ threadId: selected.id })[0]?.text).toBe("@dev review results")
 })

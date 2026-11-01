@@ -225,3 +225,15 @@ it("requires an explicit editor choice for a new thread on each channel run", as
     resultsThreadId: null,
   })
 })
+
+it("keeps private routine destinations private when the bot belongs to a channel", async () => {
+  const { api } = await getRoutineChannelFixture()
+  const routines = await openRoutineScreen(api)
+
+  fireEvent.click(within(routines).getByRole("button", { name: "Criar rotina", exact: true }))
+
+  const editor = screen.getByRole("dialog")
+  const destination = within(editor).getByRole("combobox", { name: "Destino dos resultados" })
+  expect(destination).toHaveValue("main-thread")
+  expect(within(destination).getByRole("option", { selected: true })).toHaveTextContent(/^Conversa principal$/)
+})

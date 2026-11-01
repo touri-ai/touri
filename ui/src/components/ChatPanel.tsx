@@ -354,7 +354,12 @@ export const VirtualMessageList = ({
   onLatestHistory,
 }: VirtualMessageListProps) => {
   const threadsByAnchor = useMemo(
-    () => new Map((anchoredThreads ?? []).map((thread) => [thread.anchorMessageId, thread])),
+    () =>
+      new Map(
+        (anchoredThreads ?? [])
+          .filter((thread) => thread.anchorMessageId && !thread.archivedAt)
+          .map((thread) => [thread.anchorMessageId, thread]),
+      ),
     [anchoredThreads],
   )
   // Rows keep stable callbacks so an unchanged message is not rendered again when another one streams.

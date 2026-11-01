@@ -125,11 +125,9 @@ export const getThreadRequest = (
   const personId = run.requesterPersonId ?? kernel.services.use("work.personForRun")?.(humanRunId)
   const role = kernel.services.use("work.isAdminRun")?.(humanRunId) ? "admin" : "member"
   if (canAccess && (!personId || !canAccess({ personId, role, threadId: parent.id }))) return null
-  const message = store.getPathMessage?.({
-    threadId: parent.id,
-    messageId: linked?.request_message_id ?? run.requestMessageId,
-    leafId: linked?.request_message_id ?? run.requestMessageId,
-  })
+  const messageId = linked?.request_message_id ?? run.requestMessageId
+  // The persisted run identifies its own request; reading it must not walk newer channel history.
+  const message = store.getPathMessage?.({ threadId: parent.id, messageId, leafId: messageId })
   if (
     message?.role !== "user" ||
     message.parts.some((part) => part.type !== "text") ||

@@ -462,3 +462,22 @@ test("abort cancels output pipes which remain open after the shell exits", async
   expect(canceled).toHaveLength(2)
   expect(canceled).toEqual(expect.arrayContaining(["stderr", "stdout"]))
 })
+
+test("script output preserves a selected results conversation in its channel", async () => {
+  const fixture = await makeFixture("printf completed")
+  const selected = createGroupStore(fixture.runtime.kernel).createThread(fixture.group, "Selected results")
+  fixture.engine.updateRoutine({
+    routineId: fixture.routine.id,
+    patch: { continuity: "results-thread", resultsThreadId: selected.id },
+    fromTool: false,
+  })
+  const finished = fixture.finished()
+
+  fixture.engine.runRoutine({ routineId: fixture.routine.id, triggerSource: "manual" })
+  const run = await finished
+
+  expect(run.threadId).toBe(selected.id)
+  expect(fixture.db.query("SELECT text FROM messages WHERE thread_id = ?").all(selected.id)).toEqual([
+    { text: "completed" },
+  ])
+})

@@ -3766,13 +3766,8 @@ export const createRuntimeEngine = ({
     }
     const bot = store.getBot({ botId: routine.botId })
     if (!bot) return { success: false, errorCode: "NOT_FOUND", error: "Bot not found" }
-    const routineGroups = createGroupStore(kernel)
-    const membership = (kernel.db as Database)
-      .query(
-        "SELECT group_id FROM group_members JOIN bot_groups ON bot_groups.id = group_members.group_id WHERE bot_id = ? ORDER BY bot_groups.created_at, group_id LIMIT 1",
-      )
-      .get(bot.id) as { group_id: string } | null
-    const group = routineGroups.get(routine.groupId ?? membership?.group_id ?? "")
+    // Channel membership never authorizes publishing a private routine into that channel.
+    const group = routine.groupId ? createGroupStore(kernel).get(routine.groupId) : null
     const publishRoutineThread = (thread: Thread): void => {
       kernel.publish({
         type: "thread.updated",
@@ -3784,11 +3779,12 @@ export const createRuntimeEngine = ({
     }
     let threadId: Id | null = null
     if (routine.continuity !== "new-thread") {
-      threadId = group
-        ? (createGroupStore(kernel).getMainThread(group.id)?.id ?? null)
-        : routine.continuity === "results-thread"
-          ? (routine.resultsThreadId ?? bot.mainThreadId)
-          : bot.mainThreadId
+      threadId =
+        routine.continuity === "results-thread" && routine.resultsThreadId
+          ? routine.resultsThreadId
+          : group
+            ? (createGroupStore(kernel).getMainThread(group.id)?.id ?? null)
+            : bot.mainThreadId
       if (!threadId) return { success: false, errorCode: "THREAD_NOT_FOUND", error: "Conversa principal indisponível" }
     }
     if (!threadId && group) {
