@@ -40,6 +40,7 @@ import { DeleteBotDialog } from "./DeleteBotDialog"
 import { DeleteRoutineDialog } from "./DeleteRoutineDialog"
 import { DiscoveredProjects } from "./DiscoveredProjects"
 import { FolderPicker } from "./FolderPicker"
+import { runLegacyImport } from "./legacyImport"
 import { MachineFields } from "./MachineFields"
 import { Modal } from "./Modal"
 import { ModelPicker } from "./ModelPicker"
@@ -135,28 +136,60 @@ export const ImportWizard = ({ bots, api, onClose, onNotice }: ImportWizardProps
   const [importCodexSessions, setImportCodexSessions] = useState(false)
   const [report, setReport] = useState<ApiRoutes["GET /imports/:id"]["res"]["report"]>(null)
   const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [statusUnavailable, setStatusUnavailable] = useState(false)
+  const [retryDryRun, setRetryDryRun] = useState(false)
+  const [lifetime, setLifetime] = useState<AbortSignal | null>(null)
+
+  useEffect(() => {
+    const controller = new AbortController()
+    setLifetime(controller.signal)
+
+    return () => controller.abort()
+  }, [])
 
   const run = async (dryRun: boolean): Promise<void> => {
+    if (busy || !lifetime || lifetime.aborted) return
+
     setBusy(true)
+    setError(null)
+    setReport(null)
+    setStatusUnavailable(false)
+    setRetryDryRun(dryRun)
+
     try {
-      const response = await api.request("POST /imports/legacy", {
-        source: { kind: "local", root },
-        botIds: selected,
-        importCodexSessions,
-        cwdMap: [],
-        includeAttachments: true,
-        dryRun,
-      })
-      const status = await api.request("GET /imports/:id", {}, { id: response.importId })
+      const status = await runLegacyImport(
+        api,
+        {
+          source: { kind: "local", root },
+          botIds: selected,
+          importCodexSessions,
+          cwdMap: [],
+          includeAttachments: true,
+          dryRun,
+        },
+        lifetime,
+        setStatusUnavailable,
+      )
+      if (lifetime.aborted) return
+
       setReport(status.report)
+      if (status.status === "failed") {
+        setError(t("Import failed. Review the report and try again."))
+        return
+      }
+
       setStep(dryRun ? 2 : 3)
       onNotice(
         dryRun ? t("Dry run complete. Nothing was written.") : t("Import complete. Imported routines stay disabled."),
       )
     } catch {
+      if (lifetime.aborted) return
+
+      setError(t("The import adapter is unavailable."))
       onNotice(t("The import adapter is unavailable."))
     } finally {
-      setBusy(false)
+      if (!lifetime.aborted) setBusy(false)
     }
   }
 
@@ -202,7 +235,7 @@ export const ImportWizard = ({ bots, api, onClose, onNotice }: ImportWizardProps
                   checked={selected.includes(bot.id)}
                   onChange={(event) =>
                     setSelected((current) =>
-                      event.target.checked ? [...current, bot.id] : current.filter((id) => id !== bot.id),
+                      event.target.checked ? current.concat(bot.id) : current.filter((id) => id !== bot.id),
                     )
                   }
                 />
@@ -262,7 +295,7 @@ export const ImportWizard = ({ bots, api, onClose, onNotice }: ImportWizardProps
             </span>
           </div>
           <div className="modal-actions">
-            <button type="button" className="button button-quiet" onClick={() => setStep(1)}>
+            <button type="button" className="button button-quiet" disabled={busy} onClick={() => setStep(1)}>
               {t("Back")}
             </button>
             <button type="button" className="button button-outline" disabled={busy} onClick={() => void run(true)}>
@@ -272,22 +305,35 @@ export const ImportWizard = ({ bots, api, onClose, onNotice }: ImportWizardProps
               {t("Import now")}
             </button>
           </div>
+          {busy && (
+            <p role="status">
+              {statusUnavailable
+                ? t("Could not check the import status. Retrying…")
+                : t("Waiting for the import result…")}
+            </p>
+          )}
+          {error && (
+            <div className="info-callout">
+              <p role="alert">{error}</p>
+              <button type="button" className="button button-outline" onClick={() => void run(retryDryRun)}>
+                {t("ob.retry")}
+              </button>
+            </div>
+          )}
           {report && <ImportReportView report={report} />}
         </div>
       )}
-      {step === 3 && (
+      {step === 3 && report && (
         <div className="wizard-content">
           <h3>{t("Import finished")}</h3>
           <div className="success-card">
             <span>✓</span>
             <div>
               <strong>{t("History is in touri")}</strong>
-              <p>
-                {t("Import counts", { messages: report?.messages.created ?? 0, threads: report?.threads.created ?? 0 })}
-              </p>
+              <p>{t("Import counts", { messages: report.messages.created, threads: report.threads.created })}</p>
             </div>
           </div>
-          {report && <ImportReportView report={report} />}
+          <ImportReportView report={report} />
           <button type="button" className="button button-dark wizard-next" onClick={() => setStep(4)}>
             {t("Show cut-over checklist")}
             <PanelIcon name="arrow-right" />
