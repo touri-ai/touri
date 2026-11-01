@@ -41,7 +41,7 @@ test("legacy import failure keeps its warnings visible and permits retry", async
   await completeImport(page, "failed", getReport(false))
 
   await expect(page.getByRole("alert")).toBeVisible()
-  await expect(page.locator(".import-report")).toContainText("Arquivo sintético indisponível.")
+  await expect(page.getByRole("alert")).toContainText("Arquivo sintético indisponível.")
   await expect(page.locator(".success-card")).toHaveCount(0)
   await expect(page.getByRole("button", { name: "Tentar de novo", exact: true })).toBeEnabled()
 

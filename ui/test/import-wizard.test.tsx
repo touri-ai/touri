@@ -81,11 +81,16 @@ it.each([false, true])("shows failure warnings and retries the same mode (dry ru
   await act(async () => vi.advanceTimersByTimeAsync(1000))
 
   expect(screen.getByRole("alert")).toHaveTextContent(t("Import failed. Review the report and try again."))
-  expect(screen.getByText("⚠ The source archive is incomplete.")).toBeVisible()
-  expect(screen.getByText("⚠ No attachments were copied.")).toBeVisible()
+  expect(within(screen.getByRole("alert")).getByText("The source archive is incomplete.")).toBeVisible()
+  expect(within(screen.getByRole("alert")).getByText("No attachments were copied.")).toBeVisible()
   expect(screen.getByText(t("Import step", { step: 3 }))).toBeVisible()
   expect(screen.queryByText(t("Import finished"))).toBeNull()
   expect(screen.getByRole("button", { name: t("ob.retry") })).toBeEnabled()
+  expect(screen.queryByRole("button", { name: t("Import now") })).toBeNull()
+  expect(screen.getByRole("alert").closest("footer")).toContainElement(
+    screen.getByRole("button", { name: t("ob.retry") }),
+  )
+  expect(document.querySelectorAll(".import-report-grid dd")).toHaveLength(4)
   expect(notice).not.toHaveBeenCalled()
 
   await act(async () => vi.advanceTimersByTimeAsync(60_000))
@@ -298,6 +303,11 @@ it("times out a stalled start request with a visible retry action", async () => 
   expect(fixture.getStatus).not.toHaveBeenCalled()
   expect(screen.getByRole("alert")).toHaveTextContent(t("The import adapter is unavailable."))
   expect(screen.getByRole("button", { name: t("ob.retry") })).toBeEnabled()
+  expect(screen.queryByRole("button", { name: t("Import now") })).toBeNull()
+  expect(screen.getByRole("alert").closest("footer")).toContainElement(
+    screen.getByRole("button", { name: t("ob.retry") }),
+  )
+  expect(document.querySelectorAll(".import-report-grid dd")).toHaveLength(0)
   expect(screen.queryByText(t("Import finished"))).toBeNull()
   expect(notice).toHaveBeenCalledExactlyOnceWith(t("The import adapter is unavailable."))
 })

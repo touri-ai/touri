@@ -194,207 +194,243 @@ export const ImportWizard = ({ bots, api, onClose, onNotice }: ImportWizardProps
   }
 
   return (
-    <Modal onClose={onClose} title={t("Import your teammates")} eyebrow={t("Import step", { step: step + 1 })}>
-      <div className="wizard-steps">
-        {[t("Source"), t("Choose bots"), t("Dry run"), t("Import"), t("Cut-over")].map((label, index) => (
-          <span className={index === step ? "wizard-active" : index < step ? "wizard-done" : ""} key={label}>
-            <i>{index + 1}</i>
-            {label}
-          </span>
-        ))}
-      </div>
-      {step === 0 && (
-        <div className="wizard-content">
-          <h3>{t("Bring over a local archive")}</h3>
-          <p>
-            {t(
-              "touri reads only the allowlisted bots, workspaces, attachments and message snapshot. Credentials and browser state are never opened.",
-            )}
-          </p>
-          <label className="field-label" htmlFor="legacy-root">
-            {t("legacy app root")}
-          </label>
-          <input id="legacy-root" value={root} onChange={(event) => setRoot(event.target.value)} />
-          <div className="info-callout">
-            {t("Default source: local path. SSH import is available when the sidecar transport is connected.")}
-          </div>
-          <button type="button" className="button button-dark wizard-next" onClick={() => setStep(1)}>
-            {t("Continue")}
-            <PanelIcon name="arrow-right" />
-          </button>
+    <Modal
+      className="import-wizard"
+      onClose={onClose}
+      title={t("Import your teammates")}
+      eyebrow={t("Import step", { step: step + 1 })}
+    >
+      <div className="import-wizard-body">
+        <div className="wizard-steps">
+          {[t("Source"), t("Choose bots"), t("Dry run"), t("Import"), t("Cut-over")].map((label, index) => (
+            <span className={index === step ? "wizard-active" : index < step ? "wizard-done" : ""} key={label}>
+              <i>{index + 1}</i>
+              {label}
+            </span>
+          ))}
         </div>
-      )}
-      {step === 1 && (
-        <div className="wizard-content">
-          <h3>{t("Select bots and map their workspaces")}</h3>
-          <div className="bot-picker">
-            {bots.map((bot) => (
-              <label className="picker-row" key={bot.id}>
-                <input
-                  type="checkbox"
-                  checked={selected.includes(bot.id)}
-                  onChange={(event) =>
-                    setSelected((current) =>
-                      event.target.checked ? current.concat(bot.id) : current.filter((id) => id !== bot.id),
-                    )
-                  }
-                />
-                <BotAvatar bot={bot} size={32} />
-                <span>
-                  <strong>{bot.name}</strong>
-                  <small>{t("existing local bot")}</small>
-                </span>
-                <em>{bot.provider}</em>
-              </label>
+        {step === 0 && (
+          <div className="wizard-content">
+            <h3>{t("Bring over a local archive")}</h3>
+            <p>
+              {t(
+                "touri reads only the allowlisted bots, workspaces, attachments and message snapshot. Credentials and browser state are never opened.",
+              )}
+            </p>
+            <label className="field-label" htmlFor="legacy-root">
+              {t("legacy app root")}
+            </label>
+            <input id="legacy-root" value={root} onChange={(event) => setRoot(event.target.value)} />
+            <div className="info-callout">
+              {t("Default source: local path. SSH import is available when the sidecar transport is connected.")}
+            </div>
+          </div>
+        )}
+        {step === 1 && (
+          <div className="wizard-content">
+            <h3>{t("Select bots and map their workspaces")}</h3>
+            <div className="bot-picker">
+              {bots.map((bot) => (
+                <label className="picker-row" key={bot.id}>
+                  <input
+                    type="checkbox"
+                    checked={selected.includes(bot.id)}
+                    onChange={(event) =>
+                      setSelected((current) =>
+                        event.target.checked ? current.concat(bot.id) : current.filter((id) => id !== bot.id),
+                      )
+                    }
+                  />
+                  <BotAvatar bot={bot} size={32} />
+                  <span>
+                    <strong>{bot.name}</strong>
+                    <small>{t("existing local bot")}</small>
+                  </span>
+                  <em>{bot.provider}</em>
+                </label>
+              ))}
+            </div>
+            <label className="toggle-row import-warning">
+              <span>
+                <strong>{t("Copy native Codex sessions")}</strong>
+                <small>{t("Rollouts can contain raw tool output. Leave off to continue from history.")}</small>
+              </span>
+              <input
+                type="checkbox"
+                checked={importCodexSessions}
+                onChange={(event) => setImportCodexSessions(event.target.checked)}
+              />
+            </label>
+          </div>
+        )}
+        {step === 2 && (
+          <div className="wizard-content">
+            <h3>{t("Review a safe dry run")}</h3>
+            <p>
+              {t(
+                "We’ll compare source records, repair dropped-message branches, and report exactly what would change.",
+              )}
+            </p>
+            <div className="review-grid">
+              <span>
+                {t("Selected bots")}
+                <strong>{selected.length}</strong>
+              </span>
+              <span>
+                {t("Attachments")}
+                <strong>{t("included")}</strong>
+              </span>
+              <span>
+                {t("Sessions")}
+                <strong>{importCodexSessions ? "copy" : t("history only")}</strong>
+              </span>
+            </div>
+
+            {busy && (
+              <p role="status">
+                {statusUnavailable
+                  ? t("Could not check the import status. Retrying…")
+                  : t("Waiting for the import result…")}
+              </p>
+            )}
+            {report && <ImportReportView report={report} showWarnings={!error} />}
+          </div>
+        )}
+        {step === 3 && report && (
+          <div className="wizard-content">
+            <h3>{t("Import finished")}</h3>
+            <div className="success-card">
+              <span>✓</span>
+              <div>
+                <strong>{t("History is in touri")}</strong>
+                <p>{t("Import counts", { messages: report.messages.created, threads: report.threads.created })}</p>
+              </div>
+            </div>
+            <ImportReportView report={report} showWarnings={!error} />
+          </div>
+        )}
+        {step === 4 && (
+          <div className="wizard-content">
+            <h3>{t("Cut over when you’re ready")}</h3>
+            <ol className="checklist">
+              <li>
+                <span>1</span>
+                {t("Verify your imported thread and message counts.")}
+              </li>
+              <li>
+                <span>2</span>
+                {t("Disable legacy app routines on the source machine.")}
+              </li>
+              <li>
+                <span>3</span>
+                {t("Run one final import, then enable routines here.")}
+              </li>
+              <li>
+                <span>4</span>
+                {t("Turn on launch at login so scheduled work stays local.")}
+              </li>
+            </ol>
+          </div>
+        )}
+      </div>
+      <footer className="import-wizard-footer">
+        {error && (
+          <div className="info-callout import-error" role="alert">
+            <strong>{error}</strong>
+            {report?.warnings.map((warning) => (
+              <p key={warning}>{warning}</p>
             ))}
           </div>
-          <label className="toggle-row import-warning">
-            <span>
-              <strong>{t("Copy native Codex sessions")}</strong>
-              <small>{t("Rollouts can contain raw tool output. Leave off to continue from history.")}</small>
-            </span>
-            <input
-              type="checkbox"
-              checked={importCodexSessions}
-              onChange={(event) => setImportCodexSessions(event.target.checked)}
-            />
-          </label>
-          <div className="modal-actions">
-            <button type="button" className="button button-quiet" onClick={() => setStep(0)}>
-              {t("Back")}
+        )}
+        <div className="modal-actions">
+          {step === 0 && (
+            <button type="button" className="button button-dark wizard-next" onClick={() => setStep(1)}>
+              {t("Continue")}
+              <PanelIcon name="arrow-right" />
             </button>
-            <button
-              type="button"
-              className="button button-dark"
-              disabled={selected.length === 0}
-              onClick={() => setStep(2)}
-            >
-              {t("Review import")}
-            </button>
-          </div>
-        </div>
-      )}
-      {step === 2 && (
-        <div className="wizard-content">
-          <h3>{t("Review a safe dry run")}</h3>
-          <p>
-            {t("We’ll compare source records, repair dropped-message branches, and report exactly what would change.")}
-          </p>
-          <div className="review-grid">
-            <span>
-              {t("Selected bots")}
-              <strong>{selected.length}</strong>
-            </span>
-            <span>
-              {t("Attachments")}
-              <strong>{t("included")}</strong>
-            </span>
-            <span>
-              {t("Sessions")}
-              <strong>{importCodexSessions ? "copy" : t("history only")}</strong>
-            </span>
-          </div>
-          <div className="modal-actions">
-            <button type="button" className="button button-quiet" disabled={busy} onClick={() => setStep(1)}>
-              {t("Back")}
-            </button>
-            <button type="button" className="button button-outline" disabled={busy} onClick={() => void run(true)}>
-              {busy ? t("Checking…") : t("Run dry run")}
-            </button>
-            <button type="button" className="button button-brand" disabled={busy} onClick={() => void run(false)}>
-              {t("Import now")}
-            </button>
-          </div>
-          {busy && (
-            <p role="status">
-              {statusUnavailable
-                ? t("Could not check the import status. Retrying…")
-                : t("Waiting for the import result…")}
-            </p>
           )}
-          {error && (
-            <div className="info-callout">
-              <p role="alert">{error}</p>
-              <button type="button" className="button button-outline" onClick={() => void run(retryDryRun)}>
-                {t("ob.retry")}
+          {step === 1 && (
+            <>
+              <button type="button" className="button button-quiet" onClick={() => setStep(0)}>
+                {t("Back")}
               </button>
-            </div>
+              <button
+                type="button"
+                className="button button-dark"
+                disabled={selected.length === 0}
+                onClick={() => setStep(2)}
+              >
+                {t("Review import")}
+              </button>
+            </>
           )}
-          {report && <ImportReportView report={report} />}
+          {step === 2 && (
+            <>
+              <button type="button" className="button button-quiet" disabled={busy} onClick={() => setStep(1)}>
+                {t("Back")}
+              </button>
+              {!error && (
+                <button type="button" className="button button-outline" disabled={busy} onClick={() => void run(true)}>
+                  {busy ? t("Checking…") : t("Run dry run")}
+                </button>
+              )}
+              <button
+                type="button"
+                className="button button-dark"
+                disabled={busy}
+                onClick={() => void run(error ? retryDryRun : false)}
+              >
+                {error ? t("ob.retry") : t("Import now")}
+              </button>
+            </>
+          )}
+          {step === 3 && (
+            <button type="button" className="button button-dark wizard-next" onClick={() => setStep(4)}>
+              {t("Show cut-over checklist")}
+              <PanelIcon name="arrow-right" />
+            </button>
+          )}
+          {step === 4 && (
+            <button type="button" className="button button-dark wizard-next" onClick={onClose}>
+              {t("Start using touri")}
+              <PanelIcon name="arrow-right" />
+            </button>
+          )}
         </div>
-      )}
-      {step === 3 && report && (
-        <div className="wizard-content">
-          <h3>{t("Import finished")}</h3>
-          <div className="success-card">
-            <span>✓</span>
-            <div>
-              <strong>{t("History is in touri")}</strong>
-              <p>{t("Import counts", { messages: report.messages.created, threads: report.threads.created })}</p>
-            </div>
-          </div>
-          <ImportReportView report={report} />
-          <button type="button" className="button button-dark wizard-next" onClick={() => setStep(4)}>
-            {t("Show cut-over checklist")}
-            <PanelIcon name="arrow-right" />
-          </button>
-        </div>
-      )}
-      {step === 4 && (
-        <div className="wizard-content">
-          <h3>{t("Cut over when you’re ready")}</h3>
-          <ol className="checklist">
-            <li>
-              <span>1</span>
-              {t("Verify your imported thread and message counts.")}
-            </li>
-            <li>
-              <span>2</span>
-              {t("Disable legacy app routines on the source machine.")}
-            </li>
-            <li>
-              <span>3</span>
-              {t("Run one final import, then enable routines here.")}
-            </li>
-            <li>
-              <span>4</span>
-              {t("Turn on launch at login so scheduled work stays local.")}
-            </li>
-          </ol>
-          <button type="button" className="button button-dark wizard-next" onClick={onClose}>
-            {t("Start using touri")}
-            <PanelIcon name="arrow-right" />
-          </button>
-        </div>
-      )}
+      </footer>
     </Modal>
   )
 }
 
-const ImportReportView = ({ report }: { report: ApiRoutes["GET /imports/:id"]["res"]["report"] }) =>
+const ImportReportView = ({
+  report,
+  showWarnings = true,
+}: {
+  showWarnings?: boolean
+  report: ApiRoutes["GET /imports/:id"]["res"]["report"]
+}) =>
   report ? (
     <div className="import-report">
       <strong>{t("Report")}</strong>
-      <div>
-        <span>
-          {plural(report.bots.created, "bot", "bots")} <b>{report.bots.created}</b>
-        </span>
-        <span>
-          {plural(report.threads.created, "conversa", "conversas")}
-          <b>{report.threads.created}</b>
-        </span>
-        <span>
-          {plural(report.messages.created, "mensagem", "mensagens")}
-          <b>{report.messages.created}</b>
-        </span>
-        <span>
-          {plural(report.routines.created, "rotina", "rotinas")}
-          <b>{report.routines.created}</b>
-        </span>
-      </div>
-      {report.warnings.map((warning) => (
-        <small key={warning}>⚠ {warning}</small>
-      ))}
+      <dl className="import-report-grid">
+        <div>
+          <dt>{t("Bots")}</dt>
+          <dd>{report.bots.created}</dd>
+        </div>
+        <div>
+          <dt>{t("Conversations")}</dt>
+          <dd>{report.threads.created}</dd>
+        </div>
+        <div>
+          <dt>{t("Messages")}</dt>
+          <dd>{report.messages.created}</dd>
+        </div>
+        <div>
+          <dt>{t("Routines")}</dt>
+          <dd>{report.routines.created}</dd>
+        </div>
+      </dl>
+      {showWarnings && report.warnings.map((warning) => <small key={warning}>⚠ {warning}</small>)}
     </div>
   ) : null
 
