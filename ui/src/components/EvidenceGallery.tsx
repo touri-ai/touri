@@ -81,8 +81,6 @@ const Thumbnail = ({
   const [ratio, setRatio] = useState("4 / 3")
   const [previewWidth, setPreviewWidth] = useState(480)
   const { notice, saveImage } = useSaveNotice()
-  const canOpenComputer =
-    error === t("Imagem disponível quando a máquina estiver ligada") && Boolean(context?.onComputer)
   useEffect(() => {
     if (!root.current) return
     if (typeof IntersectionObserver === "undefined") {
@@ -158,7 +156,8 @@ const Thumbnail = ({
       <button
         type="button"
         className="evidence-thumbnail"
-        style={{ aspectRatio: ratio, maxWidth: previewWidth }}
+        data-state={error ? "error" : "image"}
+        style={error ? undefined : { aspectRatio: ratio, maxWidth: previewWidth }}
         aria-label={t("Abrir captura {index} em tamanho original", { index: index + 1 })}
         onClick={open}
       >
@@ -184,42 +183,26 @@ const Thumbnail = ({
         )}
       </button>
       <figcaption>{image.caption}</figcaption>
-      {error && !hasPathLabel && <p className="evidence-path">{image.path}</p>}
       {error && (
-        <button type="button" className="text-button" onClick={() => void navigator.clipboard.writeText(image.path)}>
-          {t("Copiar caminho")}
-        </button>
+        <ImageFailureActions
+          image={image}
+          showPath={!hasPathLabel}
+          error={error}
+          context={context}
+          retryable={retryable}
+          onRetry={() => setRevision((value) => value + 1)}
+        />
       )}
-      {error && context?.bot.machine === "local" && "__TAURI_INTERNALS__" in window && (
+      {!error && (
         <button
           type="button"
           className="text-button"
-          onClick={() => void createTauriInvoke()("reveal_in_finder", { path: image.path }).catch(() => {})}
+          disabled={!image.src && !src}
+          onClick={() => void saveImage(() => readImage(image, context), image.filename)}
         >
-          {t("Abrir pasta")}
+          {t("Baixar imagem")}
         </button>
       )}
-      {error && retryable && (
-        <button
-          type="button"
-          className="text-button"
-          onClick={() => {
-            if (canOpenComputer) context?.onComputer?.()
-            setRevision((value) => value + 1)
-          }}
-        >
-          {" "}
-          {canOpenComputer ? t("Abrir Computador") : t("Tentar novamente")}
-        </button>
-      )}
-      <button
-        type="button"
-        className="text-button"
-        disabled={!image.src && !src}
-        onClick={() => void saveImage(() => readImage(image, context), image.filename)}
-      >
-        {t("Baixar imagem")}
-      </button>
       {notice && <p role="status">{notice}</p>}
     </figure>
   )
@@ -391,7 +374,13 @@ export const ImageLightbox = ({
   }, [src, image, context])
   if (!image) return null
   return (
-    <dialog ref={dialog} className="evidence-lightbox" aria-label={image.caption} onCancel={close}>
+    <dialog
+      ref={dialog}
+      className="evidence-lightbox"
+      data-state={error ? "error" : "image"}
+      aria-label={image.caption}
+      onCancel={close}
+    >
       <header>
         <strong>
           {image.caption} · {index + 1}/{images.length}
@@ -449,22 +438,16 @@ export const ImageLightbox = ({
       )}
       {notice && <p role="status">{notice}</p>}
       {error ? (
-        <p role="status">
-          <span>{error}</span> <span className="evidence-path">{image.path}</span>
-          <button type="button" onClick={() => void navigator.clipboard.writeText(image.path)}>
-            {t("Copiar caminho")}
-          </button>
-          {retryable && (
-            <button type="button" onClick={() => setRevision((value) => value + 1)}>
-              {t("Tentar novamente")}
-            </button>
-          )}
-          {error === t("Imagem disponível quando a máquina estiver ligada") && context?.onComputer && (
-            <button type="button" onClick={() => context?.onComputer?.()}>
-              {t("Abrir Computador")}
-            </button>
-          )}
-        </p>
+        <div className="evidence-empty">
+          <p role="status">{error}</p>
+          <ImageFailureActions
+            image={image}
+            error={error}
+            context={context}
+            retryable={retryable}
+            onRetry={() => setRevision((value) => value + 1)}
+          />
+        </div>
       ) : src ? (
         <div
           ref={stage}
@@ -505,5 +488,64 @@ export const ImageLightbox = ({
         <p role="status">{t("Carregando imagem…")}</p>
       )}
     </dialog>
+  )
+}
+
+const ImageFailureActions = ({
+  image,
+  error,
+  context,
+  retryable,
+  onRetry,
+  showPath = true,
+}: {
+  image: EvidenceImage
+  error: string
+  context: EvidenceContextValue | null
+  retryable: boolean
+  onRetry: () => void
+  showPath?: boolean
+}) => {
+  const [notice, setNotice] = useState("")
+  const copyPath = async () => {
+    try {
+      await navigator.clipboard.writeText(image.path)
+      setNotice(t("Caminho copiado"))
+    } catch {
+      setNotice(t("Não foi possível copiar o caminho. Selecione e copie o texto."))
+    }
+  }
+  const openFolder = async () => {
+    try {
+      await createTauriInvoke()("reveal_in_finder", { path: image.path })
+    } catch {
+      setNotice(t("Não foi possível abrir a pasta."))
+    }
+  }
+  return (
+    <div className="evidence-failure-actions">
+      {showPath && <code className="evidence-path">{image.path}</code>}
+      <div className="evidence-image-actions">
+        <button type="button" className="text-button" onClick={() => void copyPath()}>
+          {t("Copiar caminho")}
+        </button>
+        {context?.bot.machine === "local" && "__TAURI_INTERNALS__" in window && (
+          <button type="button" className="text-button" onClick={() => void openFolder()}>
+            {t("Abrir pasta")}
+          </button>
+        )}
+        {retryable && (
+          <button type="button" className="text-button" onClick={onRetry}>
+            {t("Tentar novamente")}
+          </button>
+        )}
+        {error === t("Imagem disponível quando a máquina estiver ligada") && context?.onComputer && (
+          <button type="button" className="text-button" onClick={() => context.onComputer?.()}>
+            {t("Abrir Computador")}
+          </button>
+        )}
+      </div>
+      {notice && <p role="status">{notice}</p>}
+    </div>
   )
 }

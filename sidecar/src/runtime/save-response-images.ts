@@ -10,9 +10,9 @@ export const getResponseImagePaths = (text: string): string[] => {
   const prose = text.slice(0, 1024 * 1024).replace(/```[\s\S]*?(?:```|$)|~~~[\s\S]*?(?:~~~|$)/g, "")
   const paths = Array.from(
     prose.matchAll(
-      /`([^`\n]+\.(?:png|jpe?g|gif|webp))`|(?:[\s`(]|^)([^\s<>`"'()[\]]+\.(?:png|jpe?g|gif|webp))(?=[\s`)\],.;!?]|$)/gi,
+      /`([^`\n]{1,4096}\.(?:png|jpe?g|gif|webp))`|\]\(<([^>\n]{1,4096}\.(?:png|jpe?g|gif|webp))>\)|(?:[\s`(]|^)([^\s<>`"'()[\]]+\.(?:png|jpe?g|gif|webp))(?=[\s`)\],.;!?]|$)/gi,
     ),
-    (match) => match[1] ?? match[2] ?? "",
+    (match) => match[1] ?? match[2] ?? match[3] ?? "",
   )
 
   const decoded = paths.flatMap((path) => {
@@ -93,7 +93,7 @@ const getResponseImage = async (
     return getWorkspaceImageAsync({ appData: kernel.paths.appData, bot, projectPath, path, capture: true })
   const vm = kernel.services.use("vm.runtime")
   if (!vm) throw new Error("Machine unavailable")
-  const result = await evidenceImageRoute(kernel, vm, true).handler({
+  const result = await evidenceImageRoute(kernel, vm, bot).handler({
     params: { id: bot.id },
     query: { path },
     body: null,

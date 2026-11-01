@@ -995,6 +995,7 @@ export const createRuntimeEngine = ({
       return () => true
     }
 
+    materializePendingText(state, runStage)
     const initial = state.parts
     const isCurrent = measureStage("runtime_part_finalization", () => getPartsSnapshotGuard(state))
     const parts = await measureStage("runtime_part_finalization", () =>
@@ -1006,7 +1007,8 @@ export const createRuntimeEngine = ({
     )
     if (!isCurrent()) return () => false
 
-    const bot = store.getBot({ botId: run.botId })
+    const ownBot = store.getBot({ botId: run.botId })
+    const bot = ownBot ? delegatedBot(kernel, run.threadId, ownBot) : null
     const captured = bot
       ? await saveResponseImages({
           kernel,

@@ -1,11 +1,14 @@
 import type { Database } from "bun:sqlite"
 import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test"
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs"
+import { mkdtemp, rm, writeFile } from "node:fs/promises"
+import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { Bot, Kernel, Message, Run, RunTimings, StoreApi, Thread } from "@touri/contracts"
 import { t } from "../../../ui/src/i18n"
 import { createStandingGrantStore } from "../../src/approvals/grants"
 import { mcpStartupChecks } from "../../src/doctor/mcp"
+import { setDelegation } from "../../src/groups/security"
 import { createKernel } from "../../src/kernel"
 import { flushFileIoAsync } from "../../src/kernel/async-files"
 import { openDatabase } from "../../src/kernel/db"
@@ -3636,3 +3639,52 @@ const sendTurn = async (current: Fixture, text: string) => {
   await waitFor(() => terminal(enqueued.run.status))
   return enqueued.run
 }
+
+describe("response image finalization", () => {
+  const fixtures = new Set<Fixture>()
+  const images = new Set<string>()
+  afterEach(async () => {
+    for (const value of fixtures) await closeFixture(value)
+    fixtures.clear()
+    for (const directory of images) await rm(directory, { recursive: true, force: true })
+    images.clear()
+  })
+
+  test.each([false, true])("captures local images with the active delegation ceiling: %s", async (delegated) => {
+    const f = await fixture()
+    fixtures.add(f)
+    const directory = await mkdtemp(join(tmpdir(), "touri-image-finalization-"))
+    images.add(directory)
+    const source = join(directory, "outside.png")
+    await writeFile(source, Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 0]))
+    await writeFile(
+      f.scenario,
+      JSON.stringify({ events: [{ type: "delta", delta: `![result](${source})` }, { type: "complete" }] }),
+    )
+    const database = f.runtime.kernel.db as Database
+    database.query("UPDATE bots SET access = 'full', cwd = home_dir WHERE id = ?").run(f.bot.id)
+    await initStore(f.runtime.kernel)
+    const store = f.runtime.kernel.services.use("store.api")
+    const bot = store?.getBot({ botId: f.bot.id })
+    if (!store || !bot) throw new Error("Missing image fixture")
+    if (delegated)
+      setDelegation(f.runtime.kernel, f.thread.id, {
+        ceiling: { ...bot, access: "read-only" },
+        caller: { id: "peer", name: "Bot de teste" },
+        groupThreadId: "delegation-origin",
+        secrets: false,
+      })
+    const request = addUser(store, f.thread, "Mostre a imagem de exemplo.")
+
+    const result = f.engine.enqueue({ threadId: f.thread.id, requestMessageId: request.id, trigger: "user" })
+    if (!result.success) throw new Error(result.error)
+    await waitFor(() => terminal(result.run.status))
+
+    expect(result.run.status).toBe("succeeded")
+    const reply = store.activePath({ threadId: f.thread.id }).find((message) => message.role === "assistant")
+    const text = reply?.parts.find((part) => part.type === "text")
+    expect(text?.text).toContain(source)
+    expect(text?.images ?? []).toHaveLength(delegated ? 0 : 1)
+    expect(database.query("SELECT * FROM attachments").all()).toHaveLength(delegated ? 0 : 1)
+  })
+})

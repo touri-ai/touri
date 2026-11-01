@@ -926,6 +926,78 @@ it("reads persisted image references by attachment rather than the deleted origi
   expect(request).toHaveBeenCalledWith("GET /bots/:id/images", { attachmentId }, { id: context.bot.id })
 })
 
+it.each([
+  ["IMAGE_NOT_FOUND", "Imagem não encontrada"],
+  ["IMAGE_TOO_LARGE", "Imagem acima de 15 MB"],
+  ["IMAGE_UNSUPPORTED", "Formato de imagem não suportado"],
+])("shows a permanent %s cause without retry or download", async (code, message) => {
+  const { context, request } = fixture()
+  request.mockRejectedValue(new ApiError(422, "Unavailable", code))
+  render(<MarkdownContent evidence={context} content="![Result](/outside/result.png)" />)
+
+  expect(await screen.findByText(message)).toBeVisible()
+  expect(screen.queryByRole("button", { name: "Tentar novamente" })).toBeNull()
+  expect(screen.queryByRole("button", { name: "Baixar imagem" })).toBeNull()
+})
+
+it.each([true, false])("reports whether copying the image path succeeded: %s", async (success) => {
+  const { context, request } = fixture()
+  const writeText = vi.fn(async () => {
+    if (!success) throw new Error("Denied")
+  })
+  vi.stubGlobal("navigator", { clipboard: { writeText }, language: "pt-BR" })
+  request.mockRejectedValue(new ApiError(403, "Denied", "IMAGE_OUTSIDE_WORKSPACE"))
+  render(<MarkdownContent evidence={context} content="![Result](/outside/result.png)" />)
+  await screen.findByText("Imagem fora da pasta do bot")
+
+  fireEvent.click(screen.getByRole("button", { name: "Copiar caminho" }))
+
+  expect(
+    await screen.findByText(
+      success ? "Caminho copiado" : "Não foi possível copiar o caminho. Selecione e copie o texto.",
+    ),
+  ).toBeVisible()
+  expect(writeText).toHaveBeenCalledWith("/outside/result.png")
+})
+
+it("reports a failed desktop folder reveal", async () => {
+  const { context, request } = fixture()
+  request.mockRejectedValue(new ApiError(403, "Denied", "IMAGE_OUTSIDE_WORKSPACE"))
+  saveInvoke.mockRejectedValueOnce(new Error("Denied"))
+  render(
+    <MarkdownContent
+      evidence={{ ...context, bot: { ...context.bot, machine: "local" } }}
+      content="![Result](/outside/result.png)"
+    />,
+  )
+  await screen.findByText("Imagem fora da pasta do bot")
+
+  fireEvent.click(screen.getByRole("button", { name: "Abrir pasta" }))
+
+  expect(await screen.findByText("Não foi possível abrir a pasta.")).toBeVisible()
+})
+
+it("keeps local folder actions outside the viewer status announcement", async () => {
+  const { context, request } = fixture()
+  vi.stubGlobal("__TAURI_INTERNALS__", {})
+  request.mockRejectedValue(new ApiError(403, "Denied", "IMAGE_OUTSIDE_WORKSPACE"))
+  render(
+    <MarkdownContent
+      evidence={{ ...context, bot: { ...context.bot, machine: "local" } }}
+      content="![Result](/outside/result.png)"
+    />,
+  )
+  await screen.findByText("Imagem fora da pasta do bot")
+  fireEvent.click(screen.getByRole("button", { name: /Abrir captura/ }))
+  const dialog = await screen.findByRole("dialog")
+  await within(dialog).findByText("Imagem fora da pasta do bot")
+
+  fireEvent.click(within(dialog).getByRole("button", { name: "Abrir pasta" }))
+
+  expect(saveInvoke).toHaveBeenCalledWith("reveal_in_finder", { path: "/outside/result.png" })
+  expect(within(dialog).getByRole("status").querySelector("button")).toBeNull()
+})
+
 it("keeps one path label when the surrounding viewer already names a failed image", async () => {
   const { context, request } = fixture()
   request.mockRejectedValue(new ApiError(404, "Missing", "IMAGE_NOT_FOUND"))
