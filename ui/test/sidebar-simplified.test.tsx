@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, expect, it } from "vitest"
 import App from "../src/App"
 import { createMockApi } from "../src/api/mock"
@@ -62,16 +62,19 @@ it("keeps conversation housekeeping in the bot menu", async () => {
   ).toEqual(["Avançado", "Rotinas", "Conversas", "Excluir bot"])
 })
 
-it("keeps unanchored conversation creation out of bot housekeeping", async () => {
+it("starts a new conversation for the bot whose menu was used, even when another bot is open", async () => {
   const api = createMockApi()
   render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
 
-  chooseBotAction("Conversas", "onb")
+  chooseBotAction("Nova conversa", "onb")
 
-  const conversations = await screen.findByRole("region", { name: "Conversas de onb" })
-  expect(within(conversations).queryByRole("button", { name: "Nova conversa", exact: true })).toBeNull()
-  expect(api.calls.filter((call) => call.route === "POST /threads")).toEqual([])
+  await screen.findByRole("textbox", { name: "Mensagem para onb" })
+  await waitFor(() =>
+    expect(api.calls.filter((call) => call.route === "POST /threads").map((call) => call.input)).toEqual([
+      { botId: "bot-onb", title: "Nova conversa" },
+    ]),
+  )
 })
 
 it("opens selection and archived conversations from the bot menu", async () => {

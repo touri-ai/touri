@@ -195,11 +195,16 @@ describe("Grupos", () => {
     fireEvent.click(
       within(screen.getByRole("region", { name: "Canais" })).getByRole("button", { name: "Ações do canal Produto" }),
     )
-    fireEvent.click(screen.getByRole("menuitem", { name: "Nova conversa" }))
-    await within(await screen.findByRole("region", { name: "Canais" })).findByRole("button", {
-      name: "Nova conversa",
-    })
-    expect(api.calls.some((c) => c.route === "POST /groups/:id/threads")).toBe(true)
+    expect(screen.queryByRole("menuitem", { name: "Nova conversa" })).toBeNull()
+    fireEvent.keyDown(document, { key: "Escape" })
+    const channelComposer = screen.getByRole("textbox", { name: "Mensagem para Produto" })
+    fireEvent.change(channelComposer, { target: { value: "Planejar os próximos passos." } })
+    fireEvent.submit(screen.getByRole("form", { name: "Compor mensagem" }))
+    fireEvent.click(await screen.findByRole("button", { name: "Iniciar thread" }))
+
+    await screen.findByRole("button", { name: "Voltar à conversa", exact: true })
+    expect(api.calls.some((call) => call.route === "POST /threads/:id/start-thread")).toBe(true)
+    expect(api.calls.some((call) => call.route === "POST /groups/:id/threads")).toBe(false)
   })
   it("F028: preserves sender identity with a neutral deleted-member avatar in existing history", async () => {
     const api = createMockApi()
