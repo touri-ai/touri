@@ -38,5 +38,13 @@ export const normalizeErrorBody = (body: unknown, status: number): unknown => {
       ? (getGroupValidationErrors(record.fields) ?? getGroupValidationError(record.field))
       : undefined
 
-  return { errorCode, ...detail, ...validation }
+  const busyMember =
+    status === 409 &&
+    errorCode === "GROUP_MEMBER_BUSY" &&
+    typeof record.busyBotId === "string" &&
+    /^[a-zA-Z0-9_-]{1,128}$/.test(record.busyBotId)
+      ? { busyBotId: record.busyBotId }
+      : undefined
+
+  return { errorCode, ...detail, ...validation, ...busyMember }
 }

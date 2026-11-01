@@ -77,14 +77,11 @@ export const init = async (kernel: Kernel): Promise<void> => {
           const existing = groups.get(params.id ?? "")
           if (!existing) return { status: 404, json: { errorCode: "NOT_FOUND", error: "Grupo não encontrado" } }
           if (!groups.validate(body)) return getInvalidResponse(groups.getValidationFields(body))
-          if (
-            (kernel.db as Database)
-              .query(
-                "SELECT 1 FROM group_turns t JOIN runs r ON r.id=t.run_id WHERE t.group_id=? AND r.status IN ('queued','starting','running') LIMIT 1",
-              )
-              .get(existing.id)
-          )
-            return { status: 409, json: { errorCode: "GROUP_BUSY", error: "Pare os turnos antes de editar o grupo." } }
+
+          const removedIds = existing.memberIds.filter((id) => !body.memberIds.includes(id))
+          const busyBotId = getBusyRemovedMemberId(kernel.db as Database, existing.id, removedIds)
+          if (busyBotId) return { status: 409, json: { errorCode: "GROUP_MEMBER_BUSY", busyBotId } }
+
           const group = groups.save(body, existing)
           kernel.publish({ type: "group.updated", group })
           for (const thread of groups.threads(group.id)) kernel.publish({ type: "thread.updated", thread })
@@ -128,4 +125,18 @@ const getCreateInput = (body: unknown): unknown => {
   if (!body || typeof body !== "object" || Array.isArray(body)) return body
 
   return { color: "#dc2626", avatarShape: "classic-none", coordinatorBotId: null, ...body }
+}
+
+const getBusyRemovedMemberId = (db: Database, groupId: string, removedIds: string[]): string | undefined => {
+  if (!removedIds.length) return undefined
+
+  // At most 20 members; seek only live runs, never the bot's growing run history.
+  const activeMember = db.query(`SELECT 1 FROM runs r INDEXED BY runs_active_workspace
+    JOIN threads t ON t.id = r.thread_id
+    WHERE r.status IN ('queued','starting','running') AND t.group_id = ? AND r.bot_id = ?
+      AND NOT EXISTS (SELECT 1 FROM group_turns g WHERE g.run_id = r.id)
+    LIMIT 1`)
+
+  // Coordination rows borrow a recipient's identity but do not represent that bot working.
+  return removedIds.find((botId) => activeMember.get(groupId, botId) !== null)
 }
