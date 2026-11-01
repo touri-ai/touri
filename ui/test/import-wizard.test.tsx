@@ -119,6 +119,11 @@ it.each([
   ],
   ["Selected bot not found: synthetic-private-id", "A selected bot was not found in the source archive."],
   [
+    "No cwd mapping for attachment-helper; using /archive/default",
+    "A source folder has no destination. Check the folder mappings.",
+  ],
+  ["attachment-helper: local memory edit kept for MEMORY.md", "Your local edits were kept."],
+  [
     "Unexpected failure /tmp/synthetic-import/private-id 2026-11-08T02:24:34.375Z",
     "The source archive contains an item that could not be imported. Check the source and try again.",
   ],

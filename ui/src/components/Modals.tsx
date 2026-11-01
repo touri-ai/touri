@@ -409,13 +409,13 @@ const getImportWarning = (warning: string): string => {
   if (warning === "Routines will remain disabled.") return t("Imported routines stay disabled.")
   if (warning.startsWith("Selected bot not found:")) return t("A selected bot was not found in the source archive.")
   if (warning.startsWith("Failed import staging retained")) return t("Temporary import files were kept for recovery.")
-  if (warning.includes("attachment") || warning.includes("Allowlisted source file"))
-    return t("A source file could not be copied. Check the source archive.")
   if (warning.includes("cwd mapping")) return t("A source folder has no destination. Check the folder mappings.")
   if (warning.includes("local memory edit kept") || warning.includes("local SOUL.md edit kept"))
     return t("Your local edits were kept.")
   if (warning.includes("session copying is disabled"))
     return t("Sessions were not copied. Imported chats use a handoff summary.")
+  if (warning.includes("attachment") || warning.includes("Allowlisted source file"))
+    return t("A source file could not be copied. Check the source archive.")
   return t("The source archive contains an item that could not be imported. Check the source and try again.")
 }
 
