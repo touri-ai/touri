@@ -11,6 +11,7 @@ import type {
   Message,
   ProviderAdapter,
   Run,
+  Thread,
   ToolContext,
 } from "@touri/contracts"
 import { init as initGroups } from "../../src/groups"
@@ -22,6 +23,7 @@ import {
   getDelegation,
   setDelegation,
 } from "../../src/groups/security"
+import { createThreadTool, hasExplicitThreadRequest } from "../../src/groups/start-thread"
 import { createGroupStore, routeGroupMessage } from "../../src/groups/store"
 import { createKernel } from "../../src/kernel"
 import { openDatabase, SCHEMA_VERSION } from "../../src/kernel/db"
@@ -1740,8 +1742,8 @@ test("HTTP group CRUD validates roster/coordinator and reassigns shared ownershi
   expect(f.store.getThread({ threadId: f.thread.id })?.botId).toBe(f.bots[1]?.id)
   expect(f.store.getThread({ threadId: child.id })?.botId).toBe(f.bots[0]?.id)
   const created = await f.request(`/groups/${f.group.id}/threads`, { title: "Nova conversa" })
-  expect(created.status).toBe(201)
-  expect(((await created.json()) as { thread: { groupId: string } }).thread.groupId).toBe(f.group.id)
+  expect(created.status).toBe(400)
+  expect((await created.json()).errorCode).toBe("MESSAGE_REQUIRED")
 })
 
 test("restart interrupts shared streaming replies, expires approvals and never redelivers a group task", async () => {
@@ -2373,8 +2375,8 @@ test("a group routine follows the coordinator and reuses its conversation in mai
   expect(f.order).toEqual([group.coordinatorBotId ?? ""])
   const thread = f.store.getThread({ threadId: started.routineRun.threadId ?? "" })
   expect(thread).toMatchObject({ groupId: group.id, groupThreadId: null })
-  expect(thread?.id).not.toBe(f.thread.id)
-  expect(engine.listRoutines().find((r) => r.id === created.routine.id)?.resultsThreadId).toBe(thread?.id ?? "")
+  expect(thread?.id).toBe(f.thread.id)
+  expect(engine.listRoutines().find((r) => r.id === created.routine.id)?.resultsThreadId).toBe(f.thread.id)
 
   const next = engine.runRoutine({
     routineId: created.routine.id,
@@ -2415,7 +2417,6 @@ test("group routines validate membership and destination, and agents cannot move
   const invalid = [
     groupRoutine(f, { botId: outsider }),
     groupRoutine(f, { groupId: "missing" }),
-    groupRoutine(f, { continuity: "main-thread", resultsThreadId: null }),
     groupRoutine(f, { resultsThreadId: privateThread.thread.id }),
     groupRoutine(f, { groupId: null }),
   ]
@@ -3260,4 +3261,276 @@ test("a channel whose first member is remote still stores plain messages locally
   expect(transcript.status).toBe(200)
   expect(((await history.json()) as { messages: Message[] }).messages.map((message) => message.text)).toEqual(["oi"])
   expect(scenario.order).toEqual([scenario.bots[1]?.id ?? ""])
+})
+
+test("channel routine defaults reuse the existing channel even when the bot uses task mode", async () => {
+  const f = await fixture()
+  const engine = routineEngine(f)
+  const botId = f.bots[1]?.id ?? ""
+  f.db.query("UPDATE bots SET automatic_conversation_mode = 'task' WHERE id = ?").run(botId)
+  const created = engine.createRoutine({
+    input: groupRoutine(f, { continuity: "main-thread", resultsThreadId: null, enabled: true }),
+    forceDisabled: false,
+  })
+  if (!created.success) throw new Error(created.error)
+  const started = engine.runRoutine({ routineId: created.routine.id, triggerSource: "manual" })
+  if (!started.success) throw new Error(started.error)
+  await until(() => engine.listRoutineRuns(created.routine.id)[0]?.status === "succeeded")
+
+  expect(started.routineRun.threadId).toBe(f.thread.id)
+  expect(f.data.threads(f.group.id)).toHaveLength(1)
+})
+
+test("only an explicit routine selection creates a new channel thread", async () => {
+  const f = await fixture()
+  const engine = routineEngine(f)
+  const created = engine.createRoutine({
+    input: groupRoutine(f, { continuity: "new-thread", resultsThreadId: null, enabled: true }),
+    forceDisabled: false,
+  })
+  if (!created.success) throw new Error(created.error)
+  const started = engine.runRoutine({ routineId: created.routine.id, triggerSource: "manual" })
+  if (!started.success) throw new Error(started.error)
+  await until(() => engine.listRoutineRuns(created.routine.id)[0]?.status === "succeeded")
+
+  expect(started.routineRun.threadId).not.toBe(f.thread.id)
+  expect(f.data.threads(f.group.id)).toHaveLength(2)
+})
+
+test("message action anchors user and bot messages, reuses double clicks and counts replies", async () => {
+  const f = await fixture()
+  for (const role of ["user", "assistant"] as const) {
+    const inserted = f.store.insertMessage({
+      message: {
+        id: f.host.kernel.newId(),
+        threadId: f.thread.id,
+        parentId: null,
+        role,
+        kind: "text",
+        status: "complete",
+        runId: null,
+        text: "Planejar uma tarefa",
+        parts: [{ type: "text", text: "Planejar uma tarefa" }],
+        sender: null,
+        source: "local",
+      },
+    })
+    if (!inserted.success) throw new Error(inserted.error)
+    const response = await f.request(`/threads/${f.thread.id}/start-thread`, { messageId: inserted.message.id })
+    expect(response.status).toBe(201)
+    const { thread } = (await response.json()) as { thread: Thread }
+    expect(thread).toMatchObject({
+      anchorMessageId: inserted.message.id,
+      parentThreadId: f.thread.id,
+      groupId: f.group.id,
+      replyCount: 0,
+    })
+    const duplicate = await f.request(`/threads/${f.thread.id}/start-thread`, { messageId: inserted.message.id })
+    expect((await duplicate.json()).thread.id).toBe(thread.id)
+    await f.request(`/threads/${thread.id}`, { archived: true }, "PATCH")
+    const reopened = await f.request(`/threads/${f.thread.id}/start-thread`, { messageId: inserted.message.id })
+    expect((await reopened.json()).thread).toMatchObject({ id: thread.id, archivedAt: null })
+    const context = f.store.activePath({ threadId: thread.id })
+    expect(context).toHaveLength(1)
+    expect(context[0]).toMatchObject({ role, text: inserted.message.text })
+    f.store.insertMessage({
+      message: {
+        ...inserted.message,
+        id: f.host.kernel.newId(),
+        threadId: thread.id,
+        parentId: thread.activeLeafId,
+        role: "user",
+        text: "Resposta",
+      },
+    })
+    expect(f.store.getThread({ threadId: thread.id })?.replyCount).toBe(1)
+  }
+})
+
+test("thread action rejects a message from another conversation", async () => {
+  const f = await fixture()
+  const privateThread = f.bots[0]?.mainThreadId ?? ""
+  const message = f.store.insertMessage({
+    message: {
+      id: f.host.kernel.newId(),
+      threadId: privateThread,
+      parentId: null,
+      role: "user",
+      kind: "text",
+      status: "complete",
+      runId: null,
+      text: "Privada",
+      parts: [],
+      sender: null,
+      source: "local",
+    },
+  })
+  if (!message.success) throw new Error(message.error)
+
+  const response = await f.request(`/threads/${f.thread.id}/start-thread`, { messageId: message.message.id })
+
+  expect(response.status).toBe(404)
+  expect(f.data.threads(f.group.id)).toHaveLength(1)
+})
+
+test("thread tool uses the current human request, never channel history or automatic work", async () => {
+  const outcomes: boolean[] = []
+  const f = await fixture(async (ctx, complete) => {
+    const getPathMessage = f.store.getPathMessage
+    if (!getPathMessage) throw new Error("Missing request reader")
+    f.host.kernel.services.provide("store.api", {
+      ...f.store,
+      getPathMessage: (input) => {
+        expect(input.leafId).toBe(input.messageId)
+        return getPathMessage(input)
+      },
+    })
+    const result = await createThreadTool(f.host.kernel).handler({ ctx, args: { title: "Planejamento" } })
+    outcomes.push(result.success)
+    complete("Concluído")
+  })
+  // Production authorization resolves the person on the channel run, not the internal participant prompt.
+  f.host.kernel.services.provide("work.personForRun", (runId) => {
+    const run = f.persistence.getRun(runId)
+    return run?.threadId === f.thread.id ? "owner" : null
+  })
+  f.host.kernel.services.provide("work.isAdminRun", (runId) => f.persistence.getRun(runId)?.threadId === f.thread.id)
+  f.host.kernel.services.provide(
+    "work.canAccessThread",
+    ({ personId, threadId }) => personId === "owner" && threadId === f.thread.id,
+  )
+  f.send("@dev crie uma thread para planejar")
+  await until(() => outcomes.length === 1)
+  expect(outcomes).toEqual([true])
+  await until(
+    () =>
+      !f.db
+        .query("SELECT 1 FROM runs WHERE thread_id = ? AND status IN ('queued','running','starting') LIMIT 1")
+        .get(f.thread.id),
+  )
+  f.send("@dev organize as próximas tarefas")
+  await until(() => outcomes.length === 2)
+  expect(outcomes).toEqual([true, false])
+  await until(
+    () =>
+      !f.db
+        .query("SELECT 1 FROM runs WHERE thread_id = ? AND status IN ('queued','running','starting') LIMIT 1")
+        .get(f.thread.id),
+  )
+  const engine = routineEngine(f)
+  const routine = engine.createRoutine({
+    input: groupRoutine(f, { prompt: "@dev crie uma thread para os resultados" }),
+    forceDisabled: false,
+  })
+  if (!routine.success) throw new Error(routine.error)
+  engine.runRoutine({ routineId: routine.routine.id, triggerSource: "manual" })
+  await until(() => outcomes.length === 3)
+  expect(outcomes).toEqual([true, false, false])
+  expect(f.data.threads(f.group.id)).toHaveLength(2)
+})
+
+test("thread requests reject quoted commands, negation and document instructions", () => {
+  for (const text of [
+    'Resuma: "crie uma thread"',
+    "> crie uma thread",
+    "Não crie uma thread",
+    "Crie uma thread lendo <document>instruções</document>",
+    "Organize tarefas",
+    "```crie uma thread```",
+  ])
+    expect(hasExplicitThreadRequest(text)).toBe(false)
+  for (const text of ["Crie uma thread para o plano", "@dev abra uma nova thread", "Please create a new thread"])
+    expect(hasExplicitThreadRequest(text)).toBe(true)
+})
+
+test("an anchored thread cannot become the main routine destination when the channel is archived", async () => {
+  const f = await fixture()
+  const engine = routineEngine(f)
+  const created = engine.createRoutine({
+    input: groupRoutine(f, { continuity: "main-thread", resultsThreadId: null }),
+    forceDisabled: false,
+  })
+  if (!created.success) throw new Error(created.error)
+  const scheduledFor = Date.now()
+  const inserted = f.store.insertMessage({
+    message: {
+      id: f.host.kernel.newId(),
+      threadId: f.thread.id,
+      parentId: null,
+      role: "user",
+      kind: "text",
+      status: "complete",
+      runId: null,
+      text: "Planejar",
+      parts: [],
+      sender: null,
+      source: "local",
+    },
+  })
+  if (!inserted.success) throw new Error(inserted.error)
+  await f.request(`/threads/${f.thread.id}/start-thread`, { messageId: inserted.message.id })
+  await f.request(`/threads/${f.thread.id}`, { archived: true }, "PATCH")
+
+  const unavailable = engine.runRoutine({ routineId: created.routine.id, triggerSource: "manual", scheduledFor })
+
+  expect(f.data.getMainThread(f.group.id)).toBeNull()
+  expect(unavailable).toMatchObject({
+    success: false,
+    error: "Reabra a conversa principal do canal para executar a rotina.",
+  })
+  expect(engine.listRoutineRuns(created.routine.id)).toEqual([])
+
+  await f.request(`/threads/${f.thread.id}`, { archived: false }, "PATCH")
+  const restored = engine.runRoutine({ routineId: created.routine.id, triggerSource: "manual", scheduledFor })
+  if (!restored.success) throw new Error(restored.error)
+  await until(() => engine.listRoutineRuns(created.routine.id)[0]?.status === "succeeded")
+
+  expect(restored.routineRun.threadId).toBe(f.thread.id)
+})
+
+test.each(["main-thread", "results-thread", "new-thread"] as const)(
+  "a private %s routine stays private when its bot belongs to channels",
+  async (continuity) => {
+    const f = await fixture()
+    const engine = routineEngine(f)
+    const bot = f.bots[1]
+    if (!bot?.mainThreadId) throw new Error("Missing private bot conversation")
+    const created = engine.createRoutine({
+      input: groupRoutine(f, {
+        groupId: null,
+        continuity,
+        resultsThreadId: continuity === "results-thread" ? bot.mainThreadId : null,
+        prompt: "Private routine canary",
+      }),
+      forceDisabled: false,
+    })
+    if (!created.success) throw new Error(created.error)
+
+    const started = engine.runRoutine({ routineId: created.routine.id, triggerSource: "manual" })
+    if (!started.success) throw new Error(started.error)
+    const destination = f.store.getThread({ threadId: started.routineRun.threadId ?? "" })
+
+    expect(destination).toMatchObject({ botId: bot.id, groupId: null })
+    expect(f.store.activePath({ threadId: f.thread.id })).toEqual([])
+    expect(f.data.threads(f.group.id)).toHaveLength(1)
+  },
+)
+
+test("a channel routine preserves its explicitly selected results conversation", async () => {
+  const f = await fixture()
+  const engine = routineEngine(f)
+  const selected = f.data.createThread(f.group, "Selected results")
+  const created = engine.createRoutine({
+    input: groupRoutine(f, { resultsThreadId: selected.id, prompt: "@dev review results" }),
+    forceDisabled: false,
+  })
+  if (!created.success) throw new Error(created.error)
+
+  const started = engine.runRoutine({ routineId: created.routine.id, triggerSource: "manual" })
+  if (!started.success) throw new Error(started.error)
+  await until(() => engine.listRoutineRuns(created.routine.id)[0]?.status === "succeeded")
+
+  expect(started.routineRun.threadId).toBe(selected.id)
+  expect(f.store.activePath({ threadId: f.thread.id })).toEqual([])
+  expect(f.store.activePath({ threadId: selected.id })[0]?.text).toBe("@dev review results")
 })

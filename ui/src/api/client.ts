@@ -121,6 +121,7 @@ export const apiRouteKeys = [
   "DELETE /desktop/:id",
   "GET /bots/:id/threads",
   "POST /threads",
+  "POST /threads/:id/start-thread",
   "PATCH /threads/:id",
   "GET /threads/:id/delete-preview",
   "DELETE /threads/:id",

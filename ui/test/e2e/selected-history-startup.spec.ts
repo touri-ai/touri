@@ -4,6 +4,7 @@ import { join } from "node:path"
 import { expect, test } from "@playwright/test"
 import type { Bot, BotGroup, Thread } from "@touri/contracts"
 import seed from "../../../sidecar/test/fixtures/ui-seed.json" with { type: "json" }
+import { seedLegacyChannelHistory } from "./seed-channel-history"
 import { createWorkGoldenServer } from "./work-golden-server"
 
 type Task = { name: string; tid: number; dur?: number; tdur?: number; args?: { name?: string } }
@@ -245,11 +246,12 @@ const seedHistory = async (current: Awaited<ReturnType<typeof createWorkGoldenSe
         }) as Promise<{ group: BotGroup; thread: Thread }>,
     ),
   )
-  for (const channel of channels) {
-    for (const index of Array.from({ length: large ? 44 : 0 }, (_, index) => index)) {
-      await current.api(`/groups/${channel.group.id}/threads`, "POST", { title: `Conversa ${index + 1}` })
-    }
-  }
+  // Existing conversations must survive upgrades without relying on a removed creation action.
+  if (large)
+    await seedLegacyChannelHistory(
+      current,
+      channels.map(({ thread }) => thread.id),
+    )
   const selected = channels[0]
   if (!selected) throw new Error("Missing synthetic channel")
   const { threads } = (await current.api(`/groups/${selected.group.id}/threads`)) as { threads: Thread[] }

@@ -347,7 +347,6 @@ const GroupSidebarEntry = memo(
               onOpenChange={setMenuOpen}
               actions={[
                 { label: t("Edit channel", {}, locale), onSelect: () => onEdit(group) },
-                { label: t("New conversation", {}, locale), onSelect: () => onNewThread(group) },
                 ...(onDelete
                   ? [{ label: t("Delete channel", {}, locale), onSelect: () => setDeleting(true), destructive: true }]
                   : []),

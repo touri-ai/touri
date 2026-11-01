@@ -178,7 +178,7 @@ CREATE TABLE routines (
   cron             TEXT NOT NULL,                  -- 5-field cron
   timezone         TEXT NOT NULL,                  -- IANA, e.g. America/Sao_Paulo
   enabled          INTEGER NOT NULL DEFAULT 0,
-  continuity       TEXT NOT NULL DEFAULT 'new-thread'
+  continuity       TEXT NOT NULL DEFAULT 'main-thread'
                    CHECK (continuity IN ('new-thread','results-thread','main-thread')),
   results_thread_id TEXT REFERENCES threads(id) ON DELETE SET NULL,
   timeout_minutes  INTEGER NOT NULL DEFAULT 30,

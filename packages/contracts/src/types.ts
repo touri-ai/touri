@@ -225,6 +225,8 @@ export type GroupCreateInput = Omit<GroupInput, 'color' | 'avatarShape' | 'coord
 export type RoutineThreadTitle = { sourceTitle: string; name: string; scheduledFor: EpochMs; timezone: string }
 
 export type Thread = {
+  anchorMessageId?: Id | null
+  replyCount?: number
   routineTitle?: RoutineThreadTitle | undefined
   ownerPersonId?: Id | null
   groupId?: Id | null
@@ -1221,6 +1223,7 @@ export type ApiRoutes = AgentImportRoutes & {
   'POST /desktop/:id/text': { req: { text: string }; res: {} }
   'DELETE /desktop/:id': { req: {}; res: {} }
   'GET /bots/:id/threads': { req: { archived?: boolean; before?: Id }; res: { threads: Array<Thread> } }
+  'POST /threads/:id/start-thread': { req: { messageId: Id; title?: string }; res: { thread: Thread } }
   'POST /threads': { req: { botId: Id; title?: string }; res: { thread: Thread } }
   'PATCH /threads/:id': { req: { title?: string; activeLeafId?: Id; archived?: boolean }; res: { thread: Thread } }
   'GET /threads/:id/delete-preview': { req: {}; res: { thread: Pick<Thread, 'id' | 'title'>; messageCount: number | null } }
@@ -1701,7 +1704,7 @@ export type StoreApi = {
   setActiveLeaf: (args: { threadId: Id; leafId: Id }) => Result<{ thread: Thread }, 'NOT_FOUND'>
   getBot: (args: { botId: Id }) => Bot | null
   getThread: (args: { threadId: Id; includeArchived?: boolean }) => Thread | null
-  createThread: (args: { botId: Id; kind: ThreadKind; title: string; parentThreadId?: Id; routineRunId?: Id; groupId?: Id; groupThreadId?: Id; ownerPersonId?: Id }) => Result<{ thread: Thread }, 'BOT_NOT_FOUND'>
+  createThread: (args: { botId: Id; kind: ThreadKind; title: string; anchorMessageId?: Id; parentThreadId?: Id; routineRunId?: Id; groupId?: Id; groupThreadId?: Id; ownerPersonId?: Id }) => Result<{ thread: Thread }, 'BOT_NOT_FOUND'>
   updateThread: (args: { threadId: Id; patch: Partial<Pick<Thread, 'title' | 'carryoverNote' | 'usage' | 'unread' | 'activeLeafId'>>; includeArchived?: boolean }) => Result<{ thread: Thread }, 'NOT_FOUND'>
   search: (args: {
     q: string

@@ -15,6 +15,7 @@ export const getChannelThreadCards = (threads: readonly Thread[], messages: read
   // Live events append new threads, so snapshot order cannot select the newest conversations.
   const newest = getChannelThreads(threads, groupId)
     .slice(1)
+    .filter((thread) => !thread.anchorMessageId)
     .reduce<Thread[]>((latest, thread) => {
       const index = latest.findIndex((candidate) => getThreadOrder(thread, candidate) < 0)
       if (index < 0) return latest.length < 50 ? latest.concat(thread) : latest

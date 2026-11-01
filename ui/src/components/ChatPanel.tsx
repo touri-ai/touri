@@ -94,6 +94,7 @@ import { PanelIcon } from "./PanelIcon"
 import { PersonAvatar } from "./PersonAvatar"
 import { REVEAL_EVENT } from "./revealEvent"
 import { SidebarActionsMenu } from "./SidebarActionsMenu"
+import { StartThreadAction } from "./StartThreadAction"
 import { getSessionRecoveryPresentation } from "./sessionRecoveryPresentation"
 import { ToolCallList } from "./ToolCallList"
 import { ToolText } from "./ToolOutput"
@@ -178,6 +179,8 @@ type ChatPanelProps = {
 type VirtualMessageListProps = {
   work?: boolean
   ownerProfile?: OwnerProfile | undefined
+  anchoredThreads?: Thread[] | undefined
+  onSelectThread?: ((id: string) => void) | undefined
   vmBotId?: string | undefined
   currentPersonId?: string | null | undefined
   machine?: MachineState | undefined
@@ -321,6 +324,8 @@ const emptyRuns: Run[] = []
 export const VirtualMessageList = ({
   work = false,
   ownerProfile,
+  anchoredThreads,
+  onSelectThread,
   vmBotId,
   currentPersonId = "owner",
   machine,
@@ -348,6 +353,15 @@ export const VirtualMessageList = ({
   onLoadOlderHistory,
   onLatestHistory,
 }: VirtualMessageListProps) => {
+  const threadsByAnchor = useMemo(
+    () =>
+      new Map(
+        (anchoredThreads ?? [])
+          .filter((thread) => thread.anchorMessageId && !thread.archivedAt)
+          .map((thread) => [thread.anchorMessageId, thread]),
+      ),
+    [anchoredThreads],
+  )
   // Rows keep stable callbacks so an unchanged message is not rendered again when another one streams.
   const latestCallbacks = useRef({ onSwitchBranch, onRetry, onEdit, onCancel })
   latestCallbacks.current = { onSwitchBranch, onRetry, onEdit, onCancel }
@@ -840,6 +854,8 @@ export const VirtualMessageList = ({
               const branchIndex = flatHistory ? 0 : siblings.findIndex((candidate) => candidate.id === message.id)
               return (
                 <MessageBubble
+                  anchoredThread={threadsByAnchor.get(message.id)}
+                  onSelectThread={onSelectThread}
                   key={message.id}
                   dayLabel={
                     index === 0 || !sameCalendarDay(visible[index - 1]?.createdAt ?? 0, message.createdAt)
@@ -1037,6 +1053,8 @@ const formatDaySeparator = (timestamp: number): string => {
 const MessageBubbleRow = ({
   work = false,
   ownerProfile,
+  anchoredThread,
+  onSelectThread,
   inserted,
   vmBotId,
   currentPersonId,
@@ -1065,6 +1083,8 @@ const MessageBubbleRow = ({
 }: {
   work?: boolean
   ownerProfile?: OwnerProfile | undefined
+  anchoredThread?: Thread | undefined
+  onSelectThread?: ((id: string) => void) | undefined
   inserted: boolean
   vmBotId?: string | undefined
   currentPersonId: string | null
@@ -1635,6 +1655,12 @@ const MessageBubbleRow = ({
         )}
       </div>
       <div className="message-actions">
+        {api &&
+          onSelectThread &&
+          ["user", "assistant"].includes(message.role) &&
+          (anchoredThread || message.status !== "streaming") && (
+            <StartThreadAction message={message} api={api} thread={anchoredThread} onSelect={onSelectThread} />
+          )}
         {!showHeader && messageTime}
         {!showHeader && messageStatus}
         {siblings.length > 1 && (
@@ -1981,6 +2007,20 @@ export const ChatPanel = ({
                   </div>
                 </header>
               )}
+              {thread.anchorMessageId && (
+                <div className="thread-context-header">
+                  <strong>{t("Thread · {title}", { title: thread.title })}</strong>
+                  {thread.parentThreadId && onSelectChannelThread && (
+                    <button
+                      type="button"
+                      className="text-button"
+                      onClick={() => thread.parentThreadId && onSelectChannelThread(thread.parentThreadId)}
+                    >
+                      {t("Voltar à conversa")}
+                    </button>
+                  )}
+                </div>
+              )}
               {historyNotice}
               {historyLoading && visibleMessages.length === 0 ? (
                 historyNotice ? null : (
@@ -2036,6 +2076,8 @@ export const ChatPanel = ({
                     <VirtualMessageList
                       work={workspaceMode === "work"}
                       ownerProfile={ownerProfile}
+                      anchoredThreads={channelThreads}
+                      onSelectThread={onSelectChannelThread}
                       vmBotId={bot?.machine === "vm" ? bot.id : undefined}
                       currentPersonId={currentPersonId}
                       machine={machine}

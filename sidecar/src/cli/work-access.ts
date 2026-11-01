@@ -531,7 +531,9 @@ export const createWorkAccess = ({ database, authStore }: { database: Database; 
     if (attachmentRoute && verb === "GET")
       return canAccessAttachment({ personId, role, attachmentId: attachmentRoute[1] ?? "" }) ? null : notFound
     const threadRoute =
-      /^\/threads\/([^/]+)(?:\/(messages|transcript|goal|respond|runs|prepare|delete-preview|read))?$/u.exec(pathname)
+      /^\/threads\/([^/]+)(?:\/(messages|transcript|goal|respond|runs|prepare|delete-preview|read|start-thread))?$/u.exec(
+        pathname,
+      )
     if (threadRoute) {
       const threadId = threadRoute[1] ?? ""
       const action = threadRoute[2] ?? ""
@@ -546,6 +548,7 @@ export const createWorkAccess = ({ database, authStore }: { database: Database; 
       if (action === "goal" && verb === "GET") return null
       if (action === "runs" && verb === "GET") return null
       if (action === "read" && verb === "POST") return null
+      if (action === "start-thread" && verb === "POST") return null
       if (action === "prepare" && verb === "POST" && ownsPrivateThread({ personId, threadId })) return null
       if (!action && verb === "PATCH" && ownsPrivateThread({ personId, threadId })) return null
       return denied

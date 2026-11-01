@@ -159,11 +159,12 @@ export const RoutineEditor = ({
     }
   }
   const destination = group
-    ? t("Conversa do grupo {group}", { group: group.name })
+    ? [
+        t("Conversa do grupo {group}", { group: group.name }),
+        ...(draft.continuity === "new-thread" ? [t("Nova thread a cada execução")] : []),
+      ].join(" · ")
     : draft.continuity === "new-thread"
-      ? bot?.automaticConversationMode === "task"
-        ? t("Segue o bot: uma conversa nova por tarefa")
-        : t("Segue o bot: conversa principal")
+      ? t("Nova thread a cada execução")
       : draft.continuity === "results-thread"
         ? draft.resultsThreadId
           ? t("Nesta conversa")
@@ -374,7 +375,7 @@ export const RoutineEditor = ({
                       if (groupId)
                         update({
                           groupId,
-                          continuity: "results-thread",
+                          continuity: "main-thread",
                           // Keep a conversation of the same group, such as the one the task was scheduled from.
                           resultsThreadId: groupId === initial.groupId ? initial.resultsThreadId : null,
                         })
@@ -394,7 +395,7 @@ export const RoutineEditor = ({
                     {!isScript && (
                       <>
                         <option value="main-thread">{t("Conversa principal")}</option>
-                        <option value="new-thread">{t("Seguir configuração do bot")}</option>
+                        <option value="new-thread">{t("Nova thread a cada execução")}</option>
                         <option value="results-thread">
                           {draft.resultsThreadId && !draft.groupId ? t("Nesta conversa") : t("Conversa de resultados")}
                         </option>
@@ -412,6 +413,21 @@ export const RoutineEditor = ({
                     ))}
                   </select>
                 </label>
+                {draft.groupId && !isScript && (
+                  <label className="routine-thread-choice">
+                    <input
+                      type="checkbox"
+                      checked={draft.continuity === "new-thread"}
+                      onChange={(event) =>
+                        update({
+                          continuity: event.target.checked ? "new-thread" : "main-thread",
+                          resultsThreadId: null,
+                        })
+                      }
+                    />
+                    {t("Nova thread a cada execução")}
+                  </label>
+                )}
                 <Disclosure defaultOpen={!simple} openWhen={!simple} summary={t("Avançado")}>
                   <label>
                     {t("Se a execução anterior ainda estiver ativa")}

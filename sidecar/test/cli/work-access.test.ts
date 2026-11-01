@@ -736,3 +736,19 @@ test("agent import progress is visible only to the owner, including among admini
   expect(access.visibleEvent({ personId: "other-admin", role: "admin", event })).toBe(false)
   expect(access.visibleEvent({ personId: "member", role: "member", event })).toBe(false)
 })
+
+test("thread message actions preserve channel and private-conversation membership", () => {
+  const authorize = (threadId: string) =>
+    access.authorizeHttp({
+      personId: "member",
+      role: "member",
+      method: "POST",
+      pathname: `/threads/${threadId}/start-thread`,
+      body: { messageId: "anchor" },
+    })
+
+  expect(authorize("member-dm")).toBeNull()
+  expect(authorize("team-chat")).toBeNull()
+  expect(authorize("other-dm")).toMatchObject({ status: 404 })
+  expect(authorize("other-chat")).toMatchObject({ status: 404 })
+})

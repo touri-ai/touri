@@ -109,12 +109,13 @@ export const init = async (kernel: Kernel): Promise<void> => {
       {
         method: "POST",
         path: "/groups/:id/threads",
-        handler: async ({ params, body }) => {
+        handler: async ({ params }) => {
           const group = groups.get(params.id ?? "")
           if (!group) return { status: 404, json: { errorCode: "NOT_FOUND", error: "Grupo não encontrado" } }
-          const title = (body as { title?: unknown })?.title
-          if (typeof title !== "string" || !title.trim() || title.length > 200) return getInvalidResponse(["title"])
-          return { status: 201, json: { thread: groups.createThread(group, title.trim()) } }
+          return {
+            status: 400,
+            json: { errorCode: "MESSAGE_REQUIRED", error: "Use Iniciar thread em uma mensagem da conversa." },
+          }
         },
       },
     ],

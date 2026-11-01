@@ -569,7 +569,7 @@ const threadUsage = (task: NonNullable<LegacyBot["tasks"]>[number] | null): Thre
 const mapContinuity = (value: string | undefined): "new-thread" | "results-thread" | "main-thread" => {
   if (value === "thread" || value === "results" || value === "results-thread") return "results-thread"
   if (value === "main") return "main-thread"
-  return "new-thread"
+  return "main-thread"
 }
 
 const safeState = (database: LegacySnapshot): Map<string, string> => {

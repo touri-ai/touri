@@ -2004,7 +2004,7 @@ describe("30 automatic routine runs", () => {
           cron: "*/5 * * * *",
           timezone: "America/Sao_Paulo",
           enabled: true,
-          continuity: "new-thread",
+          continuity: "main-thread",
           resultsThreadId: null,
           groupId: null,
           timeoutMinutes: 30,
@@ -2137,14 +2137,12 @@ test.serial("routine continuity overrides the bot mode only when explicitly sele
 
         const threadIds = value.engine.listRoutineRuns(created.routine.id).map((run) => run.threadId)
         expect(threadIds).toHaveLength(2)
-        if (continuity === "new-thread" && automaticConversationMode === "task") {
+        if (continuity === "new-thread") {
           expect(threadIds[0]).not.toBe(threadIds[1])
         } else {
           expect(threadIds[0]).toBe(threadIds[1])
         }
-        if (continuity === "main-thread" || (continuity === "new-thread" && automaticConversationMode === "main"))
-          expect(threadIds).toEqual([value.thread.id, value.thread.id])
-        if (continuity === "results-thread") expect(threadIds[0]).not.toBe(value.thread.id)
+        if (continuity !== "new-thread") expect(threadIds).toEqual([value.thread.id, value.thread.id])
       } finally {
         await closeFixture(value)
       }

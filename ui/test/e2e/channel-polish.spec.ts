@@ -1,7 +1,7 @@
 import { mkdir } from "node:fs/promises"
 import { join } from "node:path"
 import { expect, test } from "@playwright/test"
-import type { Bot, BotGroup, RoutineRun, Run, Thread } from "@touri/contracts"
+import type { Bot, BotGroup, Message, RoutineRun, Run, Thread } from "@touri/contracts"
 import { createWorkGoldenServer } from "./work-golden-server"
 
 let server: Awaited<ReturnType<typeof createWorkGoldenServer>> | null = null
@@ -29,15 +29,17 @@ test("channel polish keeps identities, messages and the member panel clear", asy
     memberIds: [bot.id],
     coordinatorBotId: bot.id,
   })) as { group: BotGroup; thread: Thread }
-  await current.api(`/groups/${group.id}/threads`, "POST", { title: group.name })
   await current.setScenario({ deltas: ["Mapas de demonstração conferidos. Podemos continuar."] })
-  await current.api(`/threads/${thread.id}/messages`, "POST", { text: "@mapas confira os mapas de demonstração." })
+  const { message } = (await current.api(`/threads/${thread.id}/messages`, "POST", {
+    text: "@mapas confira os mapas de demonstração.",
+  })) as { message: Message }
   await expect
     .poll(async () => {
       const { runs } = (await current.api(`/threads/${thread.id}/runs?all=true`)) as { runs: Run[] }
       return runs.some((run) => run.groupTurnId && run.status === "succeeded")
     })
     .toBe(true)
+  await current.api(`/threads/${thread.id}/start-thread`, "POST", { messageId: message.id, title: group.name })
   const { runs: mentionedRuns } = (await current.api(`/threads/${thread.id}/runs?all=true`)) as { runs: Run[] }
   const { routine } = (await current.api("/routines", "POST", {
     botId: bot.id,

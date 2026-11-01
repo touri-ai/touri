@@ -3526,9 +3526,12 @@ export const createRuntimeEngine = ({
     if (!group) return "Group not found"
     if (input.kind !== "script" && !group.memberIds.includes(input.botId))
       return "The routine's bot must be a member of the group"
-    if (input.continuity === "main-thread") return "A group routine posts into a group conversation"
     if (input.resultsThreadId && (thread?.groupId !== group.id || thread.groupThreadId))
       return "Results conversation must belong to this group"
+    const needsMainThread =
+      input.continuity === "main-thread" || (input.continuity === "results-thread" && !input.resultsThreadId)
+    if (needsMainThread && !createGroupStore(kernel).getMainThread(group.id))
+      return "Reabra a conversa principal do canal para executar a rotina."
     return null
   }
 
@@ -3767,6 +3770,7 @@ export const createRuntimeEngine = ({
     }
     const bot = store.getBot({ botId: routine.botId })
     if (!bot) return { success: false, errorCode: "NOT_FOUND", error: "Bot not found" }
+    // Channel membership never authorizes publishing a private routine into that channel.
     const group = routine.groupId ? createGroupStore(kernel).get(routine.groupId) : null
     const publishRoutineThread = (thread: Thread): void => {
       kernel.publish({
@@ -3778,10 +3782,15 @@ export const createRuntimeEngine = ({
       })
     }
     let threadId: Id | null = null
-    if (routine.continuity === "main-thread") threadId = bot.mainThreadId
-    else if (routine.continuity === "results-thread") threadId = routine.resultsThreadId
-    else if ((bot.automaticConversationMode ?? "main") === "main" && !group) threadId = bot.mainThreadId
-    else if ((bot.automaticConversationMode ?? "main") === "main" && group) threadId = routine.resultsThreadId
+    if (routine.continuity !== "new-thread") {
+      threadId =
+        routine.continuity === "results-thread" && routine.resultsThreadId
+          ? routine.resultsThreadId
+          : group
+            ? (createGroupStore(kernel).getMainThread(group.id)?.id ?? null)
+            : bot.mainThreadId
+      if (!threadId) return { success: false, errorCode: "THREAD_NOT_FOUND", error: "Conversa principal indisponível" }
+    }
     if (!threadId && group) {
       const created = store.createThread({
         botId: group.memberIds[0] ?? bot.id,
@@ -3793,8 +3802,6 @@ export const createRuntimeEngine = ({
         return { success: false, errorCode: "THREAD_NOT_FOUND", error: "Unable to create routine thread" }
       publishRoutineThread(created.thread)
       threadId = created.thread.id
-      if (routine.continuity === "results-thread" || (bot.automaticConversationMode ?? "main") === "main")
-        persistence.updateRoutine({ ...routine, resultsThreadId: threadId, updatedAt: Date.now() })
     }
     if (!threadId) {
       const threadArgs = {
@@ -3810,9 +3817,9 @@ export const createRuntimeEngine = ({
         return { success: false, errorCode: "THREAD_NOT_FOUND", error: "Unable to create routine thread" }
       publishRoutineThread(created.thread)
       threadId = created.thread.id
-      if (routine.continuity === "results-thread")
-        persistence.updateRoutine({ ...routine, resultsThreadId: threadId, updatedAt: Date.now() })
     }
+    if (routine.continuity === "results-thread" && !routine.resultsThreadId)
+      persistence.updateRoutine({ ...routine, resultsThreadId: threadId, updatedAt: Date.now() })
     const messageResult = store.insertMessage({
       message: {
         id: kernel.newId(),

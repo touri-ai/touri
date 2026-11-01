@@ -77,7 +77,7 @@ it("creates globally for an eligible channel and refreshes destinations when swi
     botId: otherBot.id,
     groupId: otherGroup.id,
     resultsThreadId: null,
-    continuity: "results-thread",
+    continuity: "main-thread",
     enabled: true,
   })
   expect(saved?.input).not.toMatchObject({ botId: bot.id })
@@ -104,12 +104,12 @@ it.each(["channel", "bot"])(
     expect(saved).toMatchObject({
       groupId: target === "channel" ? eligibleGroup.id : null,
       resultsThreadId: null,
-      continuity: "results-thread",
+      continuity: target === "channel" ? "main-thread" : "results-thread",
     })
   },
 )
 
-it("keeps the test run conversation when activating a routine moved to another channel", async () => {
+it("keeps the main-channel default when activating a tested routine moved to another channel", async () => {
   const { api, eligibleGroup, routine } = await getRoutineChannelFixture()
   await openRoutineScreen(api)
 
@@ -130,7 +130,8 @@ it("keeps the test run conversation when activating a routine moved to another c
   const saved = (await api.request("GET /routines", {})).routines.find((item) => item.id === routine.id)
   expect(saved).toMatchObject({
     groupId: eligibleGroup.id,
-    resultsThreadId: "tested-channel-conversation",
+    resultsThreadId: null,
+    continuity: "main-thread",
     enabled: true,
   })
 })
@@ -204,4 +205,35 @@ it("saves an owner-authored script command and destination without a prompt", as
     envFile: "/tmp/example.env",
     groupId: group.id,
   })
+})
+
+it("requires an explicit editor choice for a new thread on each channel run", async () => {
+  const { api, routine } = await getRoutineChannelFixture()
+  await openRoutineScreen(api)
+  await chooseRoutineAction(routine.name, "Editar")
+  const editor = screen.getByRole("dialog")
+  const choice = within(editor).getByRole("checkbox", { name: "Nova thread a cada execução" })
+  expect(choice).not.toBeChecked()
+
+  fireEvent.click(choice)
+  fireEvent.click(within(editor).getByRole("button", { name: "Revisar rotina" }))
+  fireEvent.click(within(editor).getByRole("button", { name: "Ativar rotina" }))
+
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+  expect((await api.request("GET /routines", {})).routines.find((item) => item.id === routine.id)).toMatchObject({
+    continuity: "new-thread",
+    resultsThreadId: null,
+  })
+})
+
+it("keeps private routine destinations private when the bot belongs to a channel", async () => {
+  const { api } = await getRoutineChannelFixture()
+  const routines = await openRoutineScreen(api)
+
+  fireEvent.click(within(routines).getByRole("button", { name: "Criar rotina", exact: true }))
+
+  const editor = screen.getByRole("dialog")
+  const destination = within(editor).getByRole("combobox", { name: "Destino dos resultados" })
+  expect(destination).toHaveValue("main-thread")
+  expect(within(destination).getByRole("option", { selected: true })).toHaveTextContent(/^Conversa principal$/)
 })

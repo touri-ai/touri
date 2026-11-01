@@ -51,6 +51,7 @@ test.each(["printf 'completed'", "printf ''", "printf '  [SILENT]\\n'", "printf 
     const run = await finished
 
     expect(run.runId).toBeNull()
+    expect(createGroupStore(fixture.runtime.kernel).threads(fixture.group.id)).toHaveLength(1)
     expect(fixture.db.query("SELECT id FROM runs").all()).toEqual([])
     const messages = fixture.db.query("SELECT role,text,sender_json FROM messages WHERE role='assistant'").all() as {
       text: string
@@ -223,13 +224,15 @@ const makeFixture = async (command: string) => {
   })
   expect(response.status).toBe(201)
   const { bot } = (await response.json()) as { bot: Bot }
-  const group = createGroupStore(runtime.kernel).save({
+  const groups = createGroupStore(runtime.kernel)
+  const group = groups.save({
     name: "Reports",
     color: "blue",
     avatarShape: "cercle",
     memberIds: [bot.id],
     coordinatorBotId: null,
   })
+  groups.createThread(group)
   const engine = createRuntimeEngine({ kernel: runtime.kernel })
   await engine.ready
   cleanups.add(async () => {
@@ -342,6 +345,7 @@ test("HTTP script creation needs no bot or prompt and channel PATCH clears a sta
     memberIds: [bot.id],
     coordinatorBotId: null,
   })
+  groups.createThread(group)
 
   const response = await request("POST", "/routines", {
     kind: "script",
@@ -458,4 +462,23 @@ test("abort cancels output pipes which remain open after the shell exits", async
 
   expect(canceled).toHaveLength(2)
   expect(canceled).toEqual(expect.arrayContaining(["stderr", "stdout"]))
+})
+
+test("script output preserves a selected results conversation in its channel", async () => {
+  const fixture = await makeFixture("printf completed")
+  const selected = createGroupStore(fixture.runtime.kernel).createThread(fixture.group, "Selected results")
+  fixture.engine.updateRoutine({
+    routineId: fixture.routine.id,
+    patch: { continuity: "results-thread", resultsThreadId: selected.id },
+    fromTool: false,
+  })
+  const finished = fixture.finished()
+
+  fixture.engine.runRoutine({ routineId: fixture.routine.id, triggerSource: "manual" })
+  const run = await finished
+
+  expect(run.threadId).toBe(selected.id)
+  expect(fixture.db.query("SELECT text FROM messages WHERE thread_id = ?").all(selected.id)).toEqual([
+    { text: "completed" },
+  ])
 })

@@ -1421,6 +1421,39 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
           .slice(0, archived ? 100 : undefined),
       } as ApiRoutes[typeof route]["res"]
     }
+    if (key === "POST /threads/:id/start-thread") {
+      const values = input as ApiRoutes["POST /threads/:id/start-thread"]["req"]
+      const parent = findThread(pathValues.id ?? "")
+      const anchor = messages.find((message) => message.id === values.messageId && message.threadId === parent?.id)
+      if (!parent || !anchor) throw new Error("Message not found")
+      const existing = threads.find((thread) => thread.anchorMessageId === anchor.id)
+      if (existing) return { thread: existing } as ApiRoutes[typeof route]["res"]
+      const context = {
+        ...anchor,
+        id: `context-${anchor.id}`,
+        threadId: `thread-${threads.length + 1}`,
+        parentId: null,
+      }
+      const thread: Thread = {
+        ...createThread({
+          id: context.threadId,
+          botId: parent.botId,
+          title: values.title ?? anchor.text.slice(0, 80),
+          running: false,
+        }),
+        kind: "chat",
+        parentThreadId: parent.id,
+        groupId: parent.groupId ?? null,
+        anchorMessageId: anchor.id,
+        replyCount: 0,
+        activeLeafId: context.id,
+      }
+      threads = [...threads, thread]
+      messages = [...messages, context]
+      emit({ type: "thread.updated", thread })
+      emit({ type: "message.created", message: context })
+      return { thread } as ApiRoutes[typeof route]["res"]
+    }
     if (key === "POST /threads") {
       const threadInput = input as ApiRoutes["POST /threads"]["req"]
       const thread = createThread({
@@ -1584,7 +1617,14 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
         return startMockReply(userMessage, recipient, parentId)
       })
       const activeLeafId = replies.at(-1)?.replyMessageId ?? userMessage.id
-      const updatedThread = thread ? { ...thread, activeLeafId, updatedAt: now() } : undefined
+      const updatedThread = thread
+        ? {
+            ...thread,
+            activeLeafId,
+            updatedAt: now(),
+            ...(thread.anchorMessageId ? { replyCount: (thread.replyCount ?? 0) + 1 + replies.length } : {}),
+          }
+        : undefined
       if (updatedThread) threads = threads.map((thread) => (thread.id === updatedThread.id ? updatedThread : thread))
       if (updatedThread) emit({ type: "thread.updated", thread: updatedThread })
 

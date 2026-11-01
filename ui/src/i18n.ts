@@ -5,6 +5,25 @@ import { userFacingError } from "./errors"
 export type Locale = "pt-BR" | "en"
 export const DEFAULT_LOCALE: Locale = "pt-BR"
 export const ptBR = {
+  "Conversa principal indisponível": "Conversa principal indisponível",
+  "Use Iniciar thread em uma mensagem da conversa.": "Use Iniciar thread em uma mensagem da conversa.",
+  "Mensagem de origem não encontrada": "Mensagem de origem não encontrada",
+  "Mensagem indisponível": "Mensagem indisponível",
+  "Conversa não encontrada": "Conversa não encontrada",
+  "Mensagem inválida": "Mensagem inválida",
+  "Mensagem não encontrada": "Mensagem não encontrada",
+  "Conversa em exclusão": "Conversa em exclusão",
+  "Peça explicitamente para criar uma thread na mensagem atual. Rotinas e delegações não podem criar threads.":
+    "Peça explicitamente para criar uma thread na mensagem atual. Rotinas e delegações não podem criar threads.",
+  "Thread criada: {title}": "Thread criada: {title}",
+
+  "Reabra a conversa principal do canal para executar a rotina.":
+    "Reabra a conversa principal do canal para executar a rotina.",
+  "Create a routine for this bot and request explicit user approval in chat to activate it. Remains disabled if not approved. Always requires approval, even with approvals disabled. Results use the existing main conversation; only a human selection in the routine editor can opt into new threads.":
+    "Criar uma rotina para este bot e pedir aprovação explícita no chat para ativá-la. Sem aprovação, continua pausada. A ativação sempre exige aprovação, mesmo quando as aprovações do bot estão desativadas. Os resultados usam a conversa principal existente; somente uma escolha no editor de rotinas permite novas threads.",
+  "Create a thread anchored to the current human message, only when that message explicitly asks to create a thread. Never use for routines, delegated work or on your own initiative.":
+    "Criar uma thread a partir da mensagem atual da pessoa, somente quando ela pedir isso explicitamente. Nunca usar em rotinas, delegações ou por iniciativa própria.",
+  "Criar uma thread a partir da mensagem atual.": "Criar uma thread a partir da mensagem atual.",
   "{bot} is working; remove them when they finish.": "{bot} está trabalhando; remova quando terminar.",
   "This bot is working; remove it when it finishes.": "Este bot está trabalhando; remova quando terminar.",
   Zoom: "Zoom",
@@ -21,6 +40,15 @@ export const ptBR = {
   "Use cropped photo": "Usar foto recortada",
   "Create profile mascot": "Criar mascote do perfil",
   "Remove profile avatar": "Remover avatar do perfil",
+  "Thread · {title}": "Thread · {title}",
+  "Voltar à conversa": "Voltar à conversa",
+  "Iniciar thread": "Iniciar thread",
+  "Abrindo thread…": "Abrindo thread…",
+  "Não foi possível iniciar a thread. Tente novamente.": "Não foi possível iniciar a thread. Tente novamente.",
+  "1 resposta": "1 resposta",
+  "{count} respostas": "{count} respostas",
+  "Nova thread a cada execução": "Nova thread a cada execução",
+
   "Claude Code": "Claude Code",
   "Agente importado": "Agente importado",
   "Agente {number}": "Agente {number}",
@@ -3812,8 +3840,32 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "Conversa principal indisponível": "Main conversation unavailable",
+  "Use Iniciar thread em uma mensagem da conversa.": "Use Start thread on a message in the conversation.",
+  "Mensagem de origem não encontrada": "Source message not found",
+  "Mensagem indisponível": "Message unavailable",
+  "Conversa não encontrada": "Conversation not found",
+  "Mensagem inválida": "Invalid message",
+  "Mensagem não encontrada": "Message not found",
+  "Conversa em exclusão": "Conversation is being deleted",
+  "Peça explicitamente para criar uma thread na mensagem atual. Rotinas e delegações não podem criar threads.":
+    "Explicitly ask to create a thread in the current message. Routines and delegated work cannot create threads.",
+  "Thread criada: {title}": "Thread created: {title}",
+
+  "Reabra a conversa principal do canal para executar a rotina.":
+    "Reopen the main channel conversation to run this routine.",
+  "Criar uma thread a partir da mensagem atual.": "Create a thread from the current message.",
   "{bot} is working; remove them when they finish.": "{bot} is working; remove them when they finish.",
   "This bot is working; remove it when it finishes.": "This bot is working; remove it when it finishes.",
+  "Thread · {title}": "Thread · {title}",
+  "Voltar à conversa": "Back to conversation",
+  "Iniciar thread": "Start thread",
+  "Abrindo thread…": "Opening thread…",
+  "Não foi possível iniciar a thread. Tente novamente.": "Could not start the thread. Try again.",
+  "1 resposta": "1 reply",
+  "{count} respostas": "{count} replies",
+  "Nova thread a cada execução": "New thread for each run",
+
   "Claude Code": "Claude Code",
   "Agente importado": "Imported agent",
   "Agente {number}": "Agent {number}",
@@ -6896,6 +6948,8 @@ export const statusLabel = (status: string): string => {
 
 /** Translate only application-authored notices, leaving bot/user content intact. */
 export const localizeNotice = (value: string): string => {
+  const createdThread = /^Thread criada: ([\s\S]+)$/.exec(value)
+  if (createdThread) return t("Thread criada: {title}", { title: createdThread[1] ?? "" })
   const mention = /^@(.+) mencionou você em #(.+)$/.exec(value)
   if (mention)
     return t("@{author} mencionou você em #{channel}", { author: mention[1] ?? "", channel: mention[2] ?? "" })
