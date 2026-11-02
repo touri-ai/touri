@@ -42,7 +42,7 @@ const getBox = async (locator: Locator) => {
   return box
 }
 
-test("Work message rows put your messages at the end and bots beside their avatar", async ({ page }, testInfo) => {
+test("Work message rows align people and bots beside their avatars", async ({ page }, testInfo) => {
   const current = await createWorkGoldenServer()
   server = current
   await current.api("/bots", "POST", {
@@ -95,29 +95,24 @@ test("Work message rows put your messages at the end and bots beside their avata
   const secondOwnerRow = getRow(secondOwnerMessage)
   const botRow = getRow(botMessage)
 
-  // Your own message: a compact bubble at the end, without avatar, name or header.
   await expect(firstOwnerRow).toHaveAttribute("data-message-author", "own")
-  await expect(firstOwnerRow.locator(".tb-avatar, .message-meta, .message-role")).toHaveCount(0)
+  await expect(firstOwnerRow).toHaveAttribute("data-work-message", "true")
+  await expect(firstOwnerRow.locator(".message-avatar .person-avatar")).toHaveText("PD")
+  await expect(firstOwnerRow.locator(".message-meta .message-role")).toHaveText("Você")
   const ownBubble = await getBox(firstOwnerRow.locator(".message-body"))
-  const ownColumn = await getBox(botRow)
-  expect(Math.abs(ownBubble.x + ownBubble.width - (ownColumn.x + ownColumn.width))).toBeLessThanOrEqual(1)
-  expect(ownBubble.width).toBeLessThan(ownColumn.width / 2)
+  const botBubble = await getBox(botRow.locator(".message-body"))
+  expect(Math.abs(ownBubble.x - botBubble.x)).toBeLessThanOrEqual(1)
   expect(
     await firstOwnerRow.locator(".message-body").evaluate((element) => getComputedStyle(element).backgroundColor),
-  ).not.toBe("rgba(0, 0, 0, 0)")
+  ).toBe("rgba(0, 0, 0, 0)")
 
-  // The time waits in the action row until hover.
-  const ownTime = firstOwnerRow.locator(".message-actions time")
-  await expect(ownTime).toHaveCSS("opacity", "0")
-  await firstOwnerRow.locator(".message-body").hover()
+  const ownTime = firstOwnerRow.locator(".message-meta time")
   await expect(ownTime).toHaveCSS("opacity", "1")
-  await page.mouse.move(0, 0)
 
   // A continuation by the same author draws no header of its own.
   await expect(secondOwnerRow).toHaveAttribute("data-message-grouped", "true")
   await expect(secondOwnerRow.locator(".tb-avatar, .message-meta")).toHaveCount(0)
 
-  // The bot: avatar column, name above, text bubble with the avatar bottom-aligned to it.
   await expect(botRow).toHaveAttribute("data-message-author", "bot")
   await expect(botRow.locator(".message-meta .message-role")).toHaveText("Lia")
   const avatar = await getBox(botRow.locator(".message-avatar .tb-avatar"))
@@ -126,23 +121,21 @@ test("Work message rows put your messages at the end and bots beside their avata
   expect(Math.round(avatar.width)).toBe(28)
   expect(avatar.x + avatar.width).toBeLessThanOrEqual(name.x)
   expect(Math.abs(body.x - name.x)).toBeLessThanOrEqual(1)
-  expect(Math.abs(avatar.y + avatar.height - (body.y + body.height))).toBeLessThanOrEqual(1)
-  expect(body.x).toBeLessThan(ownBubble.x)
+  expect(Math.abs(avatar.y - name.y)).toBeLessThanOrEqual(1)
+  expect(Math.abs(body.x - ownBubble.x)).toBeLessThanOrEqual(1)
   expect(
     await botRow
       .locator(".message-text")
       .first()
       .evaluate((element) => getComputedStyle(element).backgroundColor),
-  ).not.toBe("rgba(0, 0, 0, 0)")
+  ).toBe("rgba(0, 0, 0, 0)")
   const botTime = botRow.locator(".message-meta time")
-  await expect(botTime).toHaveCSS("opacity", "0")
-  await botRow.locator(".message-body").hover()
   await expect(botTime).toHaveCSS("opacity", "1")
 
   await page.setViewportSize({ width: 390, height: 844 })
   const phoneBubble = await getBox(firstOwnerRow.locator(".message-body"))
-  const phoneColumn = await getBox(botRow)
-  expect(Math.abs(phoneBubble.x + phoneBubble.width - (phoneColumn.x + phoneColumn.width))).toBeLessThanOrEqual(1)
+  const phoneBotBubble = await getBox(botRow.locator(".message-body"))
+  expect(Math.abs(phoneBubble.x - phoneBotBubble.x)).toBeLessThanOrEqual(1)
   expect(Math.round((await getBox(botRow.locator(".message-avatar .tb-avatar"))).width)).toBe(28)
 })
 

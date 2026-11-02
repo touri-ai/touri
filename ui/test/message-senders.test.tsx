@@ -55,7 +55,7 @@ describe("message senders", () => {
     expect(row).not.toHaveClass("message-user")
   })
 
-  it("shows an integration beside its avatar like a bot, with its label", () => {
+  it.each([false, true])("shows an integration beside its avatar like a bot, with its label (Work: %s)", (work) => {
     const sender = {
       id: "integration:notice",
       name: "touri avisos",
@@ -65,6 +65,7 @@ describe("message senders", () => {
 
     const { container } = render(
       <VirtualMessageList
+        work={work}
         messages={[getMessage("notice", sender)]}
         currentPersonId="owner"
         onSwitchBranch={() => undefined}

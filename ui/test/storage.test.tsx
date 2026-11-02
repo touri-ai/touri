@@ -1,13 +1,27 @@
+import { Blob as NodeBlob } from "node:buffer"
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import type { ApiRoutes, ToolCallPart } from "@touri/contracts"
-import { afterEach, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, expect, it, vi } from "vitest"
 import type { ApiRequest } from "../src/api/client"
 import { createMockApi } from "../src/api/mock"
 import { ToolCallCard } from "../src/components/ToolCallCard"
 import { DoctorStorage } from "../src/features/doctor/DoctorStorage"
 
+const cleanups = new Set<() => void>()
+const mockBrowserBlob = () => {
+  // The DOM fixture lacks Blob.arrayBuffer(), which the browser thumbnail loader uses.
+  vi.stubGlobal("Blob", NodeBlob)
+  return () => vi.unstubAllGlobals()
+}
+beforeEach(() => {
+  cleanups.add(mockBrowserBlob())
+})
 afterEach(() => {
   cleanup()
+  cleanups.forEach((restore) => {
+    restore()
+  })
+  cleanups.clear()
   vi.useRealTimers()
 })
 const part: ToolCallPart = {
@@ -22,6 +36,8 @@ const part: ToolCallPart = {
   ok: true,
   resolution: "succeeded",
 }
+const screenshotDataUrl =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a2ioAAAAASUVORK5CYII="
 
 it("loads file-backed tool results only on demand through authenticated attachment requests", async () => {
   const base = createMockApi()
@@ -214,7 +230,7 @@ it("keeps browser page context and host screenshot thumbnails when output is sto
             structured: {
               title: "Página preservada",
               url: "https://example.org/pagina",
-              dataUrl: "data:image/png;base64,aW1hZ2U=",
+              dataUrl: screenshotDataUrl,
             },
             content: [],
           }),
@@ -223,13 +239,18 @@ it("keeps browser page context and host screenshot thumbnails when output is sto
           bytes: 200,
         } as never)
       : base.request(route, input, path)
-  render(<ToolCallCard part={{ ...part, tool: "mcp__touri__browser_screenshot" }} api={{ ...base, request }} />)
+  const view = render(
+    <ToolCallCard part={{ ...part, tool: "mcp__touri__browser_screenshot" }} api={{ ...base, request }} />,
+  )
   expect(screen.getByRole("article")).toHaveAccessibleName("Ferramenta · Captura")
   expect(screen.queryByText("Página preservada")).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole("button", { name: "Abrir resultado completo" }))
   expect(await screen.findByText("Página preservada")).toBeVisible()
   expect(screen.getByText("https://example.org")).toBeVisible()
   expect(document.body.textContent).not.toContain("/pagina")
+  await waitFor(() =>
+    expect(view.container.querySelector(".evidence-thumbnail img")).toHaveAttribute("src", screenshotDataUrl),
+  )
   expect(screen.getByRole("button", { name: "Baixar imagem" })).toBeVisible()
   expect(screen.queryByText("Resultado")).toBeNull()
 })

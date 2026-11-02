@@ -189,7 +189,7 @@ it("keeps app sections short and technical settings within their disclosure", as
       expect(control).not.toBeVisible()
   }
   const disclosures: Record<string, string> = {
-    appearance: "Chat, barra lateral e atalhos",
+    appearance: "Chat, perfil e atalhos",
     privacy: "Dados, permissões e conexões",
     diagnostics: "Verificar e cuidar deste computador",
   }

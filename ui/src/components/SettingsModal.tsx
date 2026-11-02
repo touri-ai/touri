@@ -188,9 +188,9 @@ export const SettingsModal = ({
             </SettingsRow>
           </SettingsGroup>
           <SettingsDisclosure
-            title={t("Chat, barra lateral e atalhos")}
-            description={t("Ajuste as prévias, a ordem dos bots e veja as teclas rápidas.")}
-            defaultOpen={initialSection === "shortcuts"}
+            title={t("Chat, perfil e atalhos")}
+            description={t("Seu perfil, as prévias, a ordem dos bots e os atalhos.")}
+            defaultOpen={initialSection === "shortcuts" || initialSection === "profile"}
           >
             <SettingsGroup>
               <SettingsRow
@@ -240,21 +240,19 @@ export const SettingsModal = ({
                 <code>{settings?.computerUseHotkey ?? "⌃⌥⌘."}</code>
               </div>
             </div>
+            {canEditOwnerProfile && (
+              <SettingsGroup>
+                <h3>{t("Profile")}</h3>
+                <p className="field-help">{t("Your name and avatar in conversations.")}</p>
+                <OwnerProfileSettings
+                  profile={ownerProfile}
+                  onChange={setOwnerProfile}
+                  focusName={initialSection === "profile"}
+                  onPendingChange={setPreparingOwnerPhoto}
+                />
+              </SettingsGroup>
+            )}
           </SettingsDisclosure>
-          {canEditOwnerProfile && (
-            <SettingsDisclosure
-              title={t("Profile")}
-              description={t("Your name and avatar in conversations.")}
-              defaultOpen={initialSection === "profile"}
-            >
-              <OwnerProfileSettings
-                profile={ownerProfile}
-                onChange={setOwnerProfile}
-                focusName={initialSection === "profile"}
-                onPendingChange={setPreparingOwnerPhoto}
-              />
-            </SettingsDisclosure>
-          )}
         </SettingsPane>
         <SettingsPane {...pane("privacy")}>
           <p className="field-help">
