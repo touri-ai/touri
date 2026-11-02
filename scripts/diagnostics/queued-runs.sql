@@ -9,13 +9,15 @@ SELECT waiting.id AS run_id, waiting.bot_id, waiting.queued_at,
           AND active.id <> waiting.id
           AND CASE WHEN channel.run_id IS NOT NULL THEN
             EXISTS (SELECT 1 FROM group_turns blocker
-                    WHERE blocker.run_id = active.id AND blocker.group_id = channel.group_id
+                    WHERE blocker.run_id = active.id
                       AND EXISTS (
                         SELECT 1 FROM json_each(channel.recipients_json) recipient
-                        WHERE recipient.value IN (SELECT value FROM json_each(blocker.recipients_json))
+                        WHERE (blocker.group_id = channel.group_id
+                          AND recipient.value IN (SELECT value FROM json_each(blocker.recipients_json))
+                          AND NOT EXISTS (SELECT 1 FROM group_run_links known WHERE known.turn_id = blocker.run_id))
                           OR EXISTS (
                             SELECT 1 FROM group_run_links link JOIN runs member ON member.id = link.run_id
-                            WHERE link.turn_id = blocker.run_id AND link.depth > 0
+                            WHERE link.turn_id = blocker.run_id
                               AND member.bot_id = recipient.value
                               AND member.status IN ('queued', 'starting', 'running')
                           )
