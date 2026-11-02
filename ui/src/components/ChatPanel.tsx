@@ -92,7 +92,7 @@ import { useInsertedIds } from "./Motion"
 import { type MascotState, mascotSignalFor } from "./mascotState"
 import { PanelIcon } from "./PanelIcon"
 import { PersonAvatar } from "./PersonAvatar"
-import { REVEAL_EVENT } from "./revealEvent"
+import { REVEAL_EVENT, requestReveal } from "./revealEvent"
 import { SidebarActionsMenu } from "./SidebarActionsMenu"
 import { StartThreadAction } from "./StartThreadAction"
 import { getSessionRecoveryPresentation } from "./sessionRecoveryPresentation"
@@ -1293,17 +1293,30 @@ const MessageBubbleRow = ({
     (task) => message.runId !== null && task.runId === message.runId && task.notification.resolvedAt !== null,
   )
   const [failureExpanded, setFailureExpanded] = useState(false)
-  const [reviewingActions, setReviewingActions] = useState(false)
+  const [actionsReviewRequest, setActionsReviewRequest] = useState(0)
+  const recordedActionsRef = useRef<HTMLElement>(null)
+  const reviewRecordedActions = useCallback(() => {
+    setFailureExpanded(true)
+    setActionsReviewRequest((request) => request + 1)
+  }, [])
   useEffect(() => {
     const review = () => {
       if (!message.runId || !consumeTaskReview(message.runId)) return
-      setReviewingActions(true)
-      root.current?.scrollIntoView?.({ block: "center" })
+
+      reviewRecordedActions()
     }
     review()
     window.addEventListener(reviewTaskEvent, review)
     return () => window.removeEventListener(reviewTaskEvent, review)
-  }, [message.runId])
+  }, [message.runId, reviewRecordedActions])
+  // The actions must be mounted before the history can reveal and anchor them.
+  useEffect(() => {
+    if (actionsReviewRequest === 0) return
+    const actions = recordedActionsRef.current
+    if (!actions) return
+
+    requestReveal(actions)
+  }, [actionsReviewRequest])
   const failedAt = run?.finishedAt ?? message.updatedAt
   // Only a failed message shows this label; skip date formatting for every other render.
   const failureTime = message.status === "failed" ? failureTimeLabel(failedAt) : ""
@@ -1334,22 +1347,30 @@ const MessageBubbleRow = ({
               <ErrorNotice
                 recovery={failureRecovery ?? runError.recovery}
                 onAction={async (action) => {
-                  if (action === "retry") await onRetry(message.runId ?? "")
-                  else if (action === "review") setReviewingActions(true)
-                  else if (action === "resume") {
-                    setReviewingActions(true)
+                  if (action === "retry") {
+                    await onRetry(message.runId ?? "")
+                    return
+                  }
+                  if (action === "review") {
+                    reviewRecordedActions()
+                    return
+                  }
+                  if (action === "resume") {
+                    reviewRecordedActions()
                     requestTaskResume(message.threadId, message.sender?.id ?? run?.botId ?? null)
-                  } else
-                    onFailureAction(
-                      action === "login"
-                        ? { kind: "setting", settingId: "providerLogin", label: "" }
-                        : { kind: "doctor", label: "" },
-                    )
+                    return
+                  }
+
+                  onFailureAction(
+                    action === "login"
+                      ? { kind: "setting", settingId: "providerLogin", label: "" }
+                      : { kind: "doctor", label: "" },
+                  )
                 }}
               />
               {vmBotId && !runError.recovery.classified && <p>{failureRetryHint(runError.stage)}</p>}
-              {reviewingActions && (
-                <section aria-label={t("Ações registradas")} tabIndex={-1}>
+              {actionsReviewRequest > 0 && (
+                <section ref={recordedActionsRef} aria-label={t("Ações registradas")} tabIndex={-1}>
                   <p>
                     {t("Revise as ações registradas antes de continuar. Nenhuma ação será repetida automaticamente.")}
                   </p>

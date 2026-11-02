@@ -9,8 +9,12 @@ import { VirtualMessageList } from "../src/components/ChatPanel"
 import { ErrorNotice } from "../src/components/ErrorNotice"
 import { FailureActionContext } from "../src/components/FailureActionContext"
 import { NotificationBell } from "../src/components/NotificationCenter"
+import * as revealEvents from "../src/components/revealEvent"
 import { errorRecovery } from "../src/errorRecovery"
 import { ApiError } from "../src/errors"
+import { requestTaskReview } from "../src/recoveryEvents"
+import { RecoveryTasksContext } from "../src/useRecoveryTasks"
+import { getTaskReviewHistory } from "./fixtures/taskReviewHistory"
 
 const cases = [
   ['network error: ECONNRESET {"stack":"transport.ts:42"}', "Não consegui conectar à sua IA.", "Tentar novamente"],
@@ -57,7 +61,10 @@ const runFor = (errorMessage: string): Run => ({
   startedAt: Date.now() - 1,
   finishedAt: Date.now(),
 })
-afterEach(() => vi.useRealTimers())
+afterEach(() => {
+  vi.useRealTimers()
+  vi.restoreAllMocks()
+})
 const expectClosedDiagnostics = (container: HTMLElement) => {
   const details = container.querySelectorAll(".error-details")
   expect(details.length).toBeGreaterThan(0)
@@ -314,40 +321,97 @@ it("closes the bell before running recovery for its own notification", async () 
   expect(screen.getByRole("button", { name: /Notificações/ })).toHaveAttribute("aria-expanded", "false")
 })
 
-it("opens recorded actions from a notification for a restart-interrupted run", async () => {
+it.each([false, true])("opens recorded actions from a notification (later reply: %s)", async (hasLaterReply) => {
   const api = createMockApi()
   const { bots, threads } = api.getState()
   const bot = bots[0]
   const thread = threads.find((item) => item.botId === bot?.id)
   if (!bot || !thread) throw new Error("Missing conversation")
-  const message = {
-    ...failed("app_restart", [
-      { type: "command", callId: "saved", command: "save notes.md", output: "saved", exitCode: 0 },
-    ]),
-    threadId: thread.id,
-  }
-  const run: Run = {
-    ...runFor("app_restart"),
+  const { messages, run } = getTaskReviewHistory({
     threadId: thread.id,
     botId: bot.id,
-    status: "interrupted",
-    errorClass: "app_restart",
-  }
+    now: Date.now(),
+    hasLaterReply,
+  })
   api.notify({ kind: "turn-failed", botId: bot.id, threadId: thread.id, title: "Turn failed", body: "app_restart" })
-  const original = api.request.bind(api)
-  api.request = vi.fn((route, input, path) => {
-    if (route === "GET /threads/:id/messages") return Promise.resolve({ messages: [message], activeLeafId: message.id })
-    if (route === "GET /threads/:id/runs") return Promise.resolve({ runs: [run] })
-    if (route === "GET /workspace/activity") return Promise.resolve({ runs: [run], messages: [message] })
-    return original(route, input, path)
-  }) as typeof api.request
-  render(<App kernel={{ services: { api } }} />)
+  const getResponse: typeof api.request = async (route, input, path) => {
+    if (route === "GET /threads/:id/messages") return { messages, activeLeafId: messages.at(-1)?.id ?? null } as never
+    if (route === "GET /threads/:id/runs") return { runs: [run] } as never
+    if (route === "GET /workspace/activity") return { runs: [run], messages } as never
+
+    return api.request(route, input, path)
+  }
+  const request = vi.fn(getResponse)
+  const client = Object.assign({}, api, { request })
+  render(<App kernel={{ services: { api: client } }} />)
   await screen.findByRole("textbox", { name: /^Mensagem para/ })
+  await screen.findByText("Etapa registrada da tarefa fictícia.")
+  if (hasLaterReply) await screen.findByText("Resposta posterior da tarefa fictícia.")
+  if (hasLaterReply)
+    expect(document.querySelector(".message-error-history > button")).toHaveAttribute("aria-expanded", "false")
+  expect(screen.queryByRole("region", { name: "Ações registradas" })).not.toBeInTheDocument()
+
   fireEvent.click(screen.getByRole("button", { name: /Notificações/ }))
   const row = screen.getByTestId("notification-row")
   fireEvent.click(within(row).getByRole("button", { name: "Ver ações realizadas" }))
-  expect(await screen.findByRole("region", { name: "Ações registradas" })).toBeVisible()
-  expect(api.request).not.toHaveBeenCalledWith("POST /runs/:id/retry", expect.anything(), expect.anything())
+
+  const actions = await screen.findByRole("region", { name: "Ações registradas" })
+  expect(actions).toBeVisible()
+  expect(screen.getByRole("button", { name: /Notificações/ })).toHaveAttribute("aria-expanded", "false")
+  expect(request).not.toHaveBeenCalledWith("POST /runs/:id/retry", expect.anything(), expect.anything())
+})
+
+it("reveals a resolved interruption after rendering its actions and repeats the review", async () => {
+  const api = createMockApi({ scenario: "interrupted-tasks" })
+  const { tasks } = await api.request("GET /recovery", {})
+  const task = tasks.find((item) => item.runId !== null)
+  if (!task) throw new Error("Missing interrupted task fixture")
+  const { messages, run } = getTaskReviewHistory({
+    threadId: "review-thread",
+    botId: "review-bot",
+    now: Date.now(),
+    hasLaterReply: false,
+  })
+  const resolved = Object.assign({}, task, {
+    id: `run:${run.id}`,
+    runId: run.id,
+    notification: Object.assign({}, task.notification, {
+      botId: run.botId,
+      threadId: run.threadId,
+      resolvedAt: Date.now(),
+    }),
+  })
+  const reveal = vi.spyOn(revealEvents, "requestReveal")
+  render(
+    <RecoveryTasksContext.Provider value={[resolved]}>
+      <VirtualMessageList messages={messages} runs={[run]} onRetry={vi.fn()} onSwitchBranch={vi.fn()} />
+    </RecoveryTasksContext.Provider>,
+  )
+  const disclosure = screen.getByRole("button", { name: "Ver erro", exact: true })
+  expect(disclosure).toHaveAttribute("aria-expanded", "false")
+
+  act(() => requestTaskReview(run.id))
+
+  const actions = screen.getByRole("region", { name: "Ações registradas" })
+  expect(actions).toBeVisible()
+  expect(disclosure).toHaveAttribute("aria-expanded", "true")
+  expect(reveal).toHaveBeenCalledWith(actions)
+
+  const calls = reveal.mock.calls.length
+
+  act(() => requestTaskReview(run.id))
+
+  expect(reveal).toHaveBeenCalledTimes(calls + 1)
+  expect(reveal).toHaveBeenLastCalledWith(actions)
+
+  fireEvent.click(disclosure)
+  expect(screen.queryByRole("region", { name: "Ações registradas" })).not.toBeInTheDocument()
+
+  act(() => requestTaskReview(run.id))
+
+  const reopenedActions = screen.getByRole("region", { name: "Ações registradas" })
+  expect(reopenedActions).toBeVisible()
+  expect(reveal).toHaveBeenLastCalledWith(reopenedActions)
 })
 
 it("keeps recovery actions after an unrelated channel request finishes", () => {
