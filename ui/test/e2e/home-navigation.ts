@@ -137,7 +137,7 @@ export const openMessageActions = async (page: Page): Promise<void> => {
 
 export const openAppearanceSettings = async (page: Page): Promise<void> => {
   await page.keyboard.press("Control+k")
-  const search = page.getByRole("dialog", { name: "Buscar", exact: true })
+  const search = page.getByRole("dialog", { name: "Paleta de comandos", exact: true })
   await search.getByRole("combobox").fill("Aparência")
   await search.locator('[data-palette-item="settings:app-section:appearance"]').click()
   await expect(page.getByRole("combobox", { name: "Tema", exact: true })).toBeVisible()
