@@ -1,3 +1,4 @@
+import AxeBuilder from "@axe-core/playwright"
 import { expect, type Locator, type Page, test } from "@playwright/test"
 import { chooseRoutineAction, showBotRoutines } from "./home-navigation"
 
@@ -10,7 +11,9 @@ cases.forEach(({ width, theme }) => {
   test.describe(`routine conversation layout at ${width}px in ${theme}`, () => {
     test.use({ viewport: { width, height: 900 }, colorScheme: theme, hasTouch: width === 390 })
 
-    test("keeps the header clear of editing with long titles and instruction disclosure", async ({ page }) => {
+    test("keeps the header clear of editing with long titles and instruction disclosure", async ({
+      page,
+    }, testInfo) => {
       await page.addInitScript((appearance) => localStorage.setItem("touri.appearance.v1", appearance), theme)
       await page.goto("/?mockScenario=routine-conversation")
       const prompt = page.locator(".message-routine-prompt")
@@ -20,6 +23,8 @@ cases.forEach(({ width, theme }) => {
       await expect(header).toHaveText("Resumo da caixa de entrada · Programada · 16:04")
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme)
       await page.evaluate(() => document.fonts.ready)
+      if (process.env.TOURI_E2E_EVIDENCE_DIR && (width === 390 || width === 1440))
+        await page.screenshot({ path: testInfo.outputPath(`routine-${width}-${theme}.png`) })
 
       await assertRoutineLayout(prompt)
       await expect(instructions).toHaveAttribute("aria-expanded", "false")
@@ -34,6 +39,11 @@ cases.forEach(({ width, theme }) => {
         "Confira as mensagens recebidas desde a última execução e procure apenas assuntos que precisam de atenção hoje.",
       )
       await assertRoutineLayout(prompt)
+      const accessibility = await new AxeBuilder({ page })
+        .include(".message-routine-prompt")
+        .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
+        .analyze()
+      expect(accessibility.violations).toEqual([])
 
       await instructions.click()
 
