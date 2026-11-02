@@ -26,6 +26,84 @@ test("the first interrupted-task dialog returns focus after its details load", a
   await expect(opener).toBeFocused()
 })
 
+const reviewWidths = [1440, 390]
+reviewWidths.forEach((width) => {
+  test(`notification review reveals collapsed history and scrolls actions at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 })
+    await page.emulateMedia({ reducedMotion: "reduce" })
+    await page.goto("/test/e2e/interrupted-tasks-harness.html")
+    const chat = page.getByTestId("virtual-message-list")
+    const disclosure = chat.locator(".message-error-history > button")
+    const actions = chat.getByRole("region", { name: "Ações registradas", exact: true })
+    const composer = page.getByRole("textbox", { name: /^Mensagem para/ })
+    await expect(disclosure).toHaveAttribute("aria-expanded", "false")
+    await expect(actions).toHaveCount(0)
+    await expect.poll(() => chat.evaluate((list) => list.scrollTop)).toBeGreaterThan(0)
+    await composer.fill("Rascunho fictício preservado.")
+    if (width === 390) await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
+    await page.getByRole("button", { name: /^Notificações/ }).click()
+    const bell = page.getByRole("region", { name: "Central de notificações" })
+
+    await bell.getByRole("button", { name: "Ver ações realizadas", exact: true }).click()
+
+    await expect(bell).toHaveCount(0)
+    await expect(disclosure).toHaveAttribute("aria-expanded", "true")
+    await expect(actions).toBeInViewport({ ratio: 1 })
+    await expect(
+      actions.getByRole("button", { name: "Comando: ls notas/ · Resultado incerto", exact: true }),
+    ).toBeVisible()
+    await expect(actions.getByRole("button", { name: "Arquivo alterado: review-notes.md", exact: true })).toBeVisible()
+    const layout = await actions.evaluate((section) => {
+      const avatar = section.closest("article")?.querySelector(".message-avatar")
+      const body = section.closest(".message-body")
+      const list = section.querySelector("ul")
+      if (!avatar || !body || !list) throw new Error("Missing recorded actions layout")
+
+      return {
+        avatarTop: avatar.getBoundingClientRect().top,
+        bodyTop: body.getBoundingClientRect().top,
+        markers: getComputedStyle(list).listStyleType,
+      }
+    })
+    expect(Math.abs(layout.avatarTop - layout.bodyTop)).toBeLessThan(2)
+    expect(layout.markers).toBe("none")
+    await expect
+      .poll(() =>
+        actions.evaluate((section) => {
+          const list = section.closest(".message-scroll")
+          if (!list) throw new Error("Missing conversation history")
+          const bounds = section.getBoundingClientRect()
+          const viewport = list.getBoundingClientRect()
+
+          return bounds.top >= viewport.top && bounds.bottom <= viewport.bottom
+        }),
+      )
+      .toBe(true)
+    await expect(composer).toHaveValue("Rascunho fictício preservado.")
+
+    await disclosure.click()
+    await expect(actions).toHaveCount(0)
+    await disclosure.click()
+    await chat.locator(".message-error").getByRole("button", { name: "Ver ações realizadas", exact: true }).click()
+
+    await expect(actions).toBeInViewport({ ratio: 1 })
+
+    if (width === 390) await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
+    await page.getByRole("button", { name: /^Tarefas interrompidas/ }).click()
+    const center = page.getByRole("dialog", { name: "Tarefas interrompidas", exact: true })
+    await center.getByRole("button", { name: /Ver ações realizadas/ }).click()
+    await expect(center.getByRole("region", { name: "Ações registradas", exact: true })).toContainText(
+      "review-notes.md",
+    )
+
+    await center.getByRole("button", { name: "Abrir conversa", exact: true }).click()
+
+    await expect(center).toHaveCount(0)
+    await expect(actions).toBeInViewport({ ratio: 1 })
+    await expect(composer).toHaveValue("Rascunho fictício preservado.")
+  })
+})
+
 for (const viewport of [
   { width: 1440, height: 900 },
   { width: 390, height: 844 },

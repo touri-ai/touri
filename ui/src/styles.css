@@ -848,6 +848,19 @@ a {
   font-size: var(--fs-caption);
   overflow-wrap: anywhere;
 }
+.message-bubble .recorded-actions-list {
+  padding-left: 0;
+  list-style: none;
+}
+.recorded-actions-list .ds-disclosure-trigger {
+  align-items: flex-start;
+  text-align: left;
+  color: var(--text);
+}
+.recorded-actions-list .ds-disclosure-chevron {
+  flex-shrink: 0;
+  margin-top: 0.3em;
+}
 .message-error-meta,
 .message-error-code {
   display: block;
@@ -3810,6 +3823,9 @@ button.brand-button:hover:not(:disabled) {
   display: flex;
   grid-area: avatar;
   align-self: end;
+}
+.chat-message-list .message-bubble[data-message-failed] > .message-avatar {
+  align-self: start;
 }
 .chat-message-list .message-body {
   min-width: 0;

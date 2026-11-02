@@ -1198,6 +1198,12 @@ A managed effect recorded in the durable work journal requires human review
 even if no reply part was saved; neither automatic recovery nor a simple retry may replay it.
 The manual resume action appears only after automatic recovery is exhausted or needs human review. It prepares the resume request in the composer and focuses it; the person sends it. In a channel the request starts with an @mention of the interrupted task's bot (from the task or its notification, never the bot that answered last), because channel messages run only mentioned bots; a message without a mention still starts no run. An existing draft stays below the request, and a draft that already addresses that bot in its leading block is kept as it is. Only complete mentions count: a longer name or an email containing the same text does not suppress the resume request; matching ignores case and accents, as channel routing does. Direct conversations keep the request without a mention.
 A later reply to another channel request or from another member does not hide that action.
+Reviewing recorded actions from a notification, the conversation or the interrupted-task dialog
+expands historical failure details and reveals the actions inside the scrolling conversation,
+including resolved interruptions. Repeated review requests reveal them again without replacing drafts
+or retrying work. Each disclosure names its sanitized command, file or action before it is opened;
+unknown outcomes are labeled explicitly. Long details remain inside the disclosure. The list has no
+redundant numbering or bullets, and failed-message avatars align with the start of the message.
 Automatic recovery markers follow the selected interface language. An empty final response (no text
 or parts) fails visibly instead of succeeding.
 One human message starts one group turn and one execution per addressed member, including a
