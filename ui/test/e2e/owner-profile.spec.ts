@@ -6,6 +6,8 @@ test.use({ reducedMotion: "reduce" })
 
 const before = process.env.OWNER_PROFILE_PHASE === "before"
 const evidence = process.env.OWNER_PROFILE_EVIDENCE
+const photoEvidence = process.env.OWNER_PHOTO_EVIDENCE
+const photoPhase = process.env.OWNER_PHOTO_PHASE ?? "after"
 
 for (const width of [1440, 390])
   for (const theme of ["light", "dark"] as const) {
@@ -63,8 +65,27 @@ for (const width of [1440, 390])
         expect(profile.violations).toEqual([])
         if (evidence)
           await page.screenshot({ animations: "disabled", path: `${evidence}/after-profile-${width}-${theme}.png` })
+        if (photoEvidence)
+          await page.screenshot({
+            animations: "disabled",
+            path: `${photoEvidence}/${photoPhase}-crop-${width}-${theme}.png`,
+          })
+        const encodingMs = await page.getByLabel("Prévia do recorte da foto").evaluate((canvas: HTMLCanvasElement) =>
+          Array.from({ length: 10 }, () => {
+            const started = performance.now()
+            canvas.toDataURL("image/webp", 0.85)
+
+            return performance.now() - started
+          }),
+        )
+        console.log(`Profile crop encoding ${width} ${theme}: max ${Math.max(...encodingMs).toFixed(2)} ms, 10 samples`)
         // Saving straight from the crop keeps the photo; no separate confirm click.
         await saveProfile(page)
+        if (photoEvidence)
+          await page.screenshot({
+            animations: "disabled",
+            path: `${photoEvidence}/${photoPhase}-saved-${width}-${theme}.png`,
+          })
         await expect(own.locator(".message-meta")).toContainText("Pessoa Teste")
         await expect(own.locator(".message-avatar img")).toBeVisible()
         const croppedColor = await own.locator(".message-avatar img").evaluate(async (image: HTMLImageElement) => {

@@ -20,8 +20,8 @@ export const OwnerProfileSettings = ({
   const [error, setError] = useState(false)
   const canvas = useRef<HTMLCanvasElement>(null)
   const request = useRef(0)
-  const latest = useRef({ profile, onChange })
-  latest.current = { profile, onChange }
+  const latest = useRef({ profile, onChange, source })
+  latest.current = { profile, onChange, source }
   const avatarBeforeCrop = useRef<OwnerProfile["avatar"]>(null)
   useEffect(
     () => () => {
@@ -83,7 +83,7 @@ export const OwnerProfileSettings = ({
       setZoom(1)
       setHorizontal(50)
       setVertical(50)
-      if (!source) avatarBeforeCrop.current = profile.avatar
+      if (!latest.current.source) avatarBeforeCrop.current = latest.current.profile.avatar
       setSource(bitmap)
     } catch {
       if (version === request.current) setError(true)
@@ -152,13 +152,22 @@ export const OwnerProfileSettings = ({
               onChange={(event) => setVertical(Number(event.target.value))}
             />
           </label>
-          <button type="button" className="button button-quiet" disabled={error} onClick={() => setSource(null)}>
+          <button
+            type="button"
+            className="button button-quiet"
+            disabled={error}
+            onClick={() => {
+              request.current += 1
+              setSource(null)
+            }}
+          >
             {t("Use cropped photo")}
           </button>
           <button
             type="button"
             className="button button-quiet"
             onClick={() => {
+              request.current += 1
               setSource(null)
               onChange({ ...profile, avatar: avatarBeforeCrop.current })
             }}
