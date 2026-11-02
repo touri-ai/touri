@@ -1448,6 +1448,10 @@ export const ptBR = {
   "O rascunho atual foi preservado. Revise as ações registradas antes de enviar.":
     "O rascunho atual foi preservado. Revise as ações registradas antes de enviar.",
   "Ações registradas": "Ações registradas",
+  "Comando: {command}": "Comando: {command}",
+  "Arquivo alterado: {paths}": "Arquivo alterado: {paths}",
+  "Arquivo: {paths}": "Arquivo: {paths}",
+  "Ação: {summary}": "Ação: {summary}",
   "Nenhuma ação confirmada no histórico. Confira o estado atual antes de continuar.":
     "Nenhuma ação confirmada no histórico. Confira o estado atual antes de continuar.",
   "Enviar arquivo deste dispositivo": "Enviar arquivo deste dispositivo",
@@ -5128,6 +5132,10 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "O rascunho atual foi preservado. Revise as ações registradas antes de enviar.":
     "Your current draft was preserved. Review the recorded actions before sending.",
   "Ações registradas": "Recorded actions",
+  "Comando: {command}": "Command: {command}",
+  "Arquivo alterado: {paths}": "File changed: {paths}",
+  "Arquivo: {paths}": "File: {paths}",
+  "Ação: {summary}": "Action: {summary}",
   "Nenhuma ação confirmada no histórico. Confira o estado atual antes de continuar.":
     "No confirmed action in history. Check the current state before continuing.",
   "Enviar arquivo deste dispositivo": "Send a file from this device",

@@ -27,6 +27,15 @@ export const getTaskReviewHistory = ({
     parts: [
       { type: "text", text },
       {
+        type: "command",
+        callId: "review-command",
+        command: "ls notas/",
+        cwd: ".",
+        exitCode: null,
+        outputTail: "",
+        resolution: "interrupted",
+      },
+      {
         type: "file_change",
         callId: "review-saved-file",
         paths: ["review-notes.md"],

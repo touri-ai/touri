@@ -26,7 +26,8 @@ test("the first interrupted-task dialog returns focus after its details load", a
   await expect(opener).toBeFocused()
 })
 
-for (const width of [1440, 390]) {
+const reviewWidths = [1440, 390]
+reviewWidths.forEach((width) => {
   test(`notification review reveals collapsed history and scrolls actions at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 900 })
     await page.emulateMedia({ reducedMotion: "reduce" })
@@ -48,6 +49,24 @@ for (const width of [1440, 390]) {
     await expect(bell).toHaveCount(0)
     await expect(disclosure).toHaveAttribute("aria-expanded", "true")
     await expect(actions).toBeInViewport({ ratio: 1 })
+    await expect(
+      actions.getByRole("button", { name: "Comando: ls notas/ · Resultado incerto", exact: true }),
+    ).toBeVisible()
+    await expect(actions.getByRole("button", { name: "Arquivo alterado: review-notes.md", exact: true })).toBeVisible()
+    const layout = await actions.evaluate((section) => {
+      const avatar = section.closest("article")?.querySelector(".message-avatar")
+      const body = section.closest(".message-body")
+      const list = section.querySelector("ul")
+      if (!avatar || !body || !list) throw new Error("Missing recorded actions layout")
+
+      return {
+        avatarTop: avatar.getBoundingClientRect().top,
+        bodyTop: body.getBoundingClientRect().top,
+        markers: getComputedStyle(list).listStyleType,
+      }
+    })
+    expect(Math.abs(layout.avatarTop - layout.bodyTop)).toBeLessThan(2)
+    expect(layout.markers).toBe("none")
     await expect
       .poll(() =>
         actions.evaluate((section) => {
@@ -83,7 +102,7 @@ for (const width of [1440, 390]) {
     await expect(actions).toBeInViewport({ ratio: 1 })
     await expect(composer).toHaveValue("Rascunho fictício preservado.")
   })
-}
+})
 
 for (const viewport of [
   { width: 1440, height: 900 },

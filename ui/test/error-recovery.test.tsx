@@ -512,3 +512,66 @@ it.each([false, true])("read recovery never retries a task (visible failed reply
   expect(await within(history).findByText("Plano salvo.")).toBeVisible()
   expect(request).not.toHaveBeenCalledWith("POST /runs/:id/retry", expect.anything(), expect.anything())
 })
+
+it("names recorded actions and exposes uncertain outcomes before opening their details", () => {
+  const command: MessagePart = {
+    type: "command",
+    callId: "uncertain-command",
+    command: "ls notas/",
+    cwd: ".",
+    exitCode: null,
+    outputTail: "",
+    resolution: "interrupted",
+  }
+  const savedFile: MessagePart = {
+    type: "file_change",
+    callId: "saved-file",
+    paths: ["review-notes.md"],
+    diff: null,
+    completedOutcome: "succeeded",
+  }
+  const message = failed("app_restart", [command, savedFile])
+  render(
+    <VirtualMessageList
+      messages={[message]}
+      runs={[runFor("app_restart")]}
+      onRetry={vi.fn()}
+      onSwitchBranch={vi.fn()}
+    />,
+  )
+
+  fireEvent.click(screen.getByRole("button", { name: "Ver ações realizadas", exact: true }))
+
+  const actions = screen.getByRole("region", { name: "Ações registradas", exact: true })
+  const commandDetails = within(actions).getByRole("button", { name: "Comando: ls notas/ · Resultado incerto" })
+  expect(commandDetails).toBeVisible()
+  expect(commandDetails).toHaveAttribute("aria-expanded", "false")
+  expect(within(actions).getByRole("button", { name: "Arquivo alterado: review-notes.md" })).toBeVisible()
+  expect(within(actions).queryByText(/Ações registradas \d/)).not.toBeInTheDocument()
+})
+
+it("sanitizes recorded action labels as well as expanded details", () => {
+  const command: MessagePart = {
+    type: "command",
+    callId: "redacted-command",
+    command: "echo password=synthetic-private-value",
+    cwd: ".",
+    exitCode: 0,
+    outputTail: "",
+  }
+  render(
+    <VirtualMessageList
+      messages={[failed("app_restart", [command])]}
+      runs={[runFor("app_restart")]}
+      onRetry={vi.fn()}
+      onSwitchBranch={vi.fn()}
+    />,
+  )
+
+  fireEvent.click(screen.getByRole("button", { name: "Ver ações realizadas", exact: true }))
+  const actions = screen.getByRole("region", { name: "Ações registradas", exact: true })
+  fireEvent.click(within(actions).getByRole("button", { name: "Comando: echo password=[segredo]" }))
+
+  expect(actions).not.toHaveTextContent("synthetic-private-value")
+  expect(within(actions).getByText("echo password=[segredo]", { selector: "pre" })).toBeVisible()
+})

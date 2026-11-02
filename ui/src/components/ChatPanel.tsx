@@ -14,7 +14,7 @@ import type {
   Run,
   Thread,
 } from "@touri/contracts"
-import { failureRetryHint, sanitizeDiagnostic } from "@touri/contracts/run-failure"
+import { failureRetryHint } from "@touri/contracts/run-failure"
 import {
   type ComponentProps,
   type CSSProperties,
@@ -77,7 +77,6 @@ import { ConnectDataCard, connectDataMarker } from "./ConnectDataCard"
 import { ConversationLoading } from "./ConversationLoading"
 import { getChannelMessages } from "./channelCancelEchoes"
 import { DeferredGoalPanel as GoalPanel } from "./DeferredGoalPanel"
-import { Disclosure } from "./Disclosure"
 import { DraftComposer, type DraftComposerHandle } from "./DraftComposer"
 import { ErrorDetails, ErrorText } from "./ErrorDetails"
 import { ErrorNotice } from "./ErrorNotice"
@@ -92,6 +91,7 @@ import { useInsertedIds } from "./Motion"
 import { type MascotState, mascotSignalFor } from "./mascotState"
 import { PanelIcon } from "./PanelIcon"
 import { PersonAvatar } from "./PersonAvatar"
+import { RecordedActions } from "./RecordedActions"
 import { REVEAL_EVENT, requestReveal } from "./revealEvent"
 import { SidebarActionsMenu } from "./SidebarActionsMenu"
 import { StartThreadAction } from "./StartThreadAction"
@@ -1374,30 +1374,7 @@ const MessageBubbleRow = ({
                   <p>
                     {t("Revise as ações registradas antes de continuar. Nenhuma ação será repetida automaticamente.")}
                   </p>
-                  <ul>
-                    {message.parts.flatMap((part, index) => {
-                      const summary =
-                        part.type === "tool_call"
-                          ? part.summary
-                          : part.type === "command"
-                            ? part.command
-                            : part.type === "file_change"
-                              ? part.paths.join(", ")
-                              : null
-                      return summary
-                        ? [
-                            <li key={"callId" in part ? part.callId : part.type}>
-                              <Disclosure summary={`${t("Ações registradas")} ${index + 1}`}>
-                                <pre>{sanitizeDiagnostic(summary)}</pre>
-                              </Disclosure>
-                            </li>,
-                          ]
-                        : []
-                    })}
-                  </ul>
-                  {!message.parts.some((part) => ["tool_call", "command", "file_change"].includes(part.type)) && (
-                    <p>{t("Nenhuma ação confirmada no histórico. Confira o estado atual antes de continuar.")}</p>
-                  )}
+                  <RecordedActions parts={message.parts} locale={locale} />
                 </section>
               )}
             </>
@@ -1468,6 +1445,7 @@ const MessageBubbleRow = ({
       ref={root}
       className={`message-bubble ${messageClass}${routinePrompt ? " message-routine-prompt" : ""}${quietBrowserNarration ? " message-browser-narration" : ""}`}
       data-work-message={work || undefined}
+      data-message-failed={message.status === "failed" || undefined}
       data-message-id={message.id}
       data-message-author={author}
       data-message-grouped={grouped || undefined}
