@@ -1965,7 +1965,14 @@ export const createRuntimeEngine = ({
         }
         const invokeWithRetry = (): ReturnType<typeof startTurn> =>
           retryTransient({
-            run: invoke,
+            run: async () => {
+              try {
+                return await invoke()
+              } finally {
+                // Buffered output belongs to this attempt and must disable replay.
+                safeEvents.flush()
+              }
+            },
             failureOf: (outcome) => {
               if (!outcome.success) return outcome.error
               if (outcome.status !== "failed") return null
@@ -1977,8 +1984,6 @@ export const createRuntimeEngine = ({
             signal: controller.signal,
           })
         let providerResult = await invokeWithRetry()
-        // Drain the redactor before deciding whether the attempt produced useful output.
-        safeEvents.flush()
         if (
           session &&
           !controller.signal.aborted &&

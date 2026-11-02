@@ -17,6 +17,7 @@ import { join } from "node:path"
 import type { Bot, Kernel, Thread, UiEvent } from "@touri/contracts"
 import { openDatabase } from "../../src/kernel/db"
 import { createAppPaths } from "../../src/kernel/paths"
+import { createRedactor } from "../../src/kernel/redact"
 import { createServices } from "../../src/kernel/services"
 import { prepareHostCodexHome } from "../../src/runtime/codex/home"
 import { createRuntimeEngine } from "../../src/runtime/engine"
@@ -30,7 +31,7 @@ afterEach(async () => {
 })
 
 type RpcRequest = { id: number; method: string; params: { input?: Array<{ text?: string }> } }
-type TurnFailure = { message: string; started?: boolean; direct?: boolean; text?: string }
+type TurnFailure = { message: string; started?: boolean; direct?: boolean; text?: string; reasoning?: boolean }
 
 const getTurnFrames = (failure?: TurnFailure) => {
   const started = { method: "turn/started", params: { turnId: "managed-turn" } }
@@ -42,7 +43,12 @@ const getTurnFrames = (failure?: TurnFailure) => {
     return [
       ...(failure.started ? [started] : []),
       ...(failure.text
-        ? [{ method: "item/agentMessage/delta", params: { itemId: "reply", delta: failure.text } }]
+        ? [
+            {
+              method: failure.reasoning ? "item/reasoning/summaryTextDelta" : "item/agentMessage/delta",
+              params: { itemId: "reply", delta: failure.text },
+            },
+          ]
         : []),
       completion,
     ]
@@ -105,7 +111,11 @@ const getProviderProcess = (
   }
 }
 
-const getFixture = (resumeError?: string, failures: ReadonlyArray<TurnFailure> = []) => {
+const getFixture = (
+  resumeError?: string,
+  failures: ReadonlyArray<TurnFailure> = [],
+  redact: Kernel["redact"] = createRedactor().redact,
+) => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "touri-codex-home-")))
   const host = join(root, "host")
   const paths = createAppPaths({ appData: join(root, "data") })
@@ -176,7 +186,7 @@ const getFixture = (resumeError?: string, failures: ReadonlyArray<TurnFailure> =
     newId: randomUUID,
     shellEnv: async () => environment,
     log: () => {},
-    redact: (value: string) => value,
+    redact,
     publish: (event: UiEvent) => events.push(event),
     subscribe: () => () => {},
     spawnTree: (input: Parameters<Kernel["spawnTree"]>[0]) => {
@@ -374,6 +384,85 @@ test.each(["database is locked", "SQLITE_BUSY", "database table is locked"])(
     expect(runtime.db.query("SELECT state FROM provider_sessions").all()).toEqual([{ state: "active" }])
   },
 )
+
+test("a workspace discovery failure before output retries once and preserves the user message", async () => {
+  const request = "Continue the synthetic task"
+  const runtime = getFixture(undefined, [{ message: "workspace routing discovery failed", direct: true }])
+
+  const run = runtime.send(request)
+  await waitForRun(run)
+  const turns = runtime.requests.filter((item) => item.method === "turn/start")
+
+  expect(run.status).toBe("succeeded")
+  expect(runtime.calls).toHaveLength(2)
+  expect(turns).toHaveLength(2)
+  expect(turns.every((turn) => turn.params.input?.some((item) => item.text?.includes(request)))).toBe(true)
+})
+
+test("a workspace discovery failure after partial output never replays the turn", async () => {
+  const runtime = getFixture(undefined, [
+    { message: "workspace routing discovery failed", direct: true, text: "Partial reply" },
+  ])
+
+  const run = runtime.send("Continue the synthetic task")
+  await waitForRun(run)
+
+  expect(run.status).toBe("failed")
+  expect(runtime.calls).toHaveLength(1)
+  expect(runtime.requests.filter((item) => item.method === "turn/start")).toHaveLength(1)
+  expect(
+    runtime.store.activePath({ threadId: runtime.thread.id }).find((item) => item.role === "assistant")?.text,
+  ).toBe("Partial reply")
+})
+
+test.each([false, true])(
+  "a workspace discovery failure with a buffered secret prefix never replays or exposes it (reasoning: %s)",
+  async (reasoning) => {
+    const redactor = createRedactor()
+    redactor.addRedactionValue("demo-provider-secret-value")
+    const runtime = getFixture(
+      undefined,
+      [{ message: "workspace routing discovery failed", direct: true, text: "demo-provider-se", reasoning }],
+      redactor.redact,
+    )
+
+    const run = runtime.send("Continue the synthetic task")
+    await waitForRun(run)
+
+    expect(run.status).toBe("failed")
+    expect(runtime.calls).toHaveLength(1)
+    expect(runtime.requests.filter((item) => item.method === "turn/start")).toHaveLength(1)
+    expect(
+      runtime.store.activePath({ threadId: runtime.thread.id }).find((item) => item.role === "assistant")?.parts,
+    ).toContainEqual(expect.objectContaining({ type: reasoning ? "reasoning" : "text", text: "[REDACTED]" }))
+    expect(JSON.stringify(runtime.events)).not.toContain("demo-provider-se")
+  },
+)
+
+test("persistent workspace discovery failures stop after one retry", async () => {
+  const failures = Array.from({ length: 3 }, () => ({ message: "workspace routing discovery failed", direct: true }))
+  const runtime = getFixture(undefined, failures)
+
+  const run = runtime.send("Continue the synthetic task")
+  await waitForRun(run)
+
+  expect(run.status).toBe("failed")
+  expect(runtime.calls).toHaveLength(2)
+  expect(runtime.requests.filter((item) => item.method === "turn/start")).toHaveLength(2)
+})
+
+test("a workspace discovery failure after turn startup never replays the request", async () => {
+  const runtime = getFixture(undefined, [
+    { message: "workspace routing discovery failed", direct: true, started: true },
+  ])
+
+  const run = runtime.send("Continue the synthetic task")
+  await waitForRun(run)
+
+  expect(run.status).toBe("failed")
+  expect(runtime.calls).toHaveLength(1)
+  expect(runtime.requests.filter((item) => item.method === "turn/start")).toHaveLength(1)
+})
 
 test("a lock reported in every pre-start completion stops after the bounded retries", async () => {
   const failures = Array.from({ length: 5 }, () => ({ message: "database is locked" }))
