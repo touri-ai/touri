@@ -814,7 +814,7 @@ it("animates reordering with FLIP, and skips the animation when motion is reduce
 it("the setting is on by default and saving it off persists through the settings API", async () => {
   const onSave = vi.fn(async () => undefined)
   render(<SettingsModal settings={null} onClose={() => undefined} onSave={onSave} />)
-  fireEvent.click(screen.getByText("Chat, barra lateral e atalhos"))
+  fireEvent.click(screen.getByText("Chat, perfil e atalhos"))
   const toggle = screen.getByRole("switch", { name: "Mover bots com novidades para o topo" })
   expect(toggle).toBeChecked()
   fireEvent.click(toggle)

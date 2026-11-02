@@ -65,7 +65,7 @@ for (const width of [1440, 1100]) {
       await shot("preferences")
       if (phase === "after") {
         await expect(page.getByRole("dialog")).not.toContainText("LOCAL PREFERENCES")
-        await page.getByText("Chat, barra lateral e atalhos").click()
+        await page.getByText("Chat, perfil e atalhos").click()
         await shot("preferences-shortcuts")
         await page.getByRole("tab", { name: "Privacidade" }).click()
         await shot("preferences-privacy")

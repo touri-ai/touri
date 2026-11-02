@@ -56,7 +56,7 @@ test("preferences visually separate shortcut and browser labels from their value
   const settings = page.getByRole("dialog", { name: "Configurações" })
   await expect(settings.getByText("preferências locais", { exact: true })).toBeVisible()
   for (const [section, disclosure] of [
-    ["Aparência", "Chat, barra lateral e atalhos"],
+    ["Aparência", "Chat, perfil e atalhos"],
     ["Privacidade", "Dados, permissões e conexões"],
   ] as const) {
     await settings.getByRole("tab", { name: section }).click()

@@ -78,16 +78,14 @@ test("app preferences disclose technical controls and preserve edits between sec
   await expect(dialog.getByRole("switch")).toHaveCount(0)
   await dialog.getByRole("combobox", { name: "Tema", exact: true }).focus()
   await page.keyboard.press("Tab")
-  await expect(dialog.locator(".ds-disclosure-trigger").first()).toBeFocused()
-  await page.keyboard.press("Tab")
-  await expect(dialog.getByRole("button", { name: /^Perfil/ })).toBeFocused()
+  await expect(dialog.getByRole("button", { name: /^Chat, perfil e atalhos/ })).toBeFocused()
   await page.keyboard.press("Tab")
   await expect(dialog.getByRole("button", { name: "Cancelar", exact: true })).toBeFocused()
   const appearance = await new AxeBuilder({ page }).include(".modal-card").analyze()
   expect(appearance.violations.filter((violation) => ["serious", "critical"].includes(violation.impact ?? ""))).toEqual(
     [],
   )
-  await dialog.getByText("Chat, barra lateral e atalhos", { exact: true }).click()
+  await dialog.getByText("Chat, perfil e atalhos", { exact: true }).click()
   await dialog.getByRole("switch", { name: "Mover bots com novidades para o topo", exact: true }).uncheck()
   await dialog.getByRole("tab", { name: "Privacidade", exact: true }).click()
   await expect(dialog.getByRole("spinbutton")).toHaveCount(0)
@@ -101,14 +99,14 @@ test("app preferences disclose technical controls and preserve edits between sec
   await dialog.getByText("Reportar problema", { exact: true }).click()
   await expect(dialog.getByLabel("Título", { exact: true })).toBeVisible()
   await dialog.getByRole("tab", { name: "Aparência", exact: true }).click()
-  await dialog.getByText("Chat, barra lateral e atalhos", { exact: true }).click()
+  await dialog.getByText("Chat, perfil e atalhos", { exact: true }).click()
   await expect(
     dialog.getByRole("switch", { name: "Mover bots com novidades para o topo", exact: true }),
   ).not.toBeChecked()
   await dialog.getByRole("button", { name: "Salvar preferências", exact: true }).click()
   await expect(dialog).toHaveCount(0)
   await page.getByRole("button", { name: "Você", exact: true }).click()
-  await dialog.getByText("Chat, barra lateral e atalhos", { exact: true }).click()
+  await dialog.getByText("Chat, perfil e atalhos", { exact: true }).click()
   await expect(
     dialog.getByRole("switch", { name: "Mover bots com novidades para o topo", exact: true }),
   ).not.toBeChecked()
