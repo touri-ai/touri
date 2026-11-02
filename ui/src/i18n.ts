@@ -3085,6 +3085,14 @@ export const ptBR = {
   "local history / safe cut-over": "histórico local / migração",
   Source: "Origem",
   "Choose bots": "Escolher bots",
+  "Import options": "Opções",
+  "All bots from this archive will be imported.": "Todos os bots deste arquivo serão importados.",
+  "All archive bots": "Todos do arquivo",
+  "All archive bots count": "Todos do arquivo ({count})",
+  "Everything was already up to date": "Tudo já estava atualizado",
+  "Already in touri": "Já no touri",
+  "Import conversation count": "{count} conversas",
+  "Unchanged import counts": "{messages} e {threads} já estavam no touri. Nenhuma alteração necessária.",
   "Dry run": "Simulação",
   Import: "Importar",
   "Cut-over": "Migração",
@@ -6388,6 +6396,9 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Import message count": "{count} messages",
   "Imported conversation count": "{count} imported conversations",
   "Import counts": "{messages} and {threads}. Routines are paused.",
+  "All archive bots count": "All from archive ({count})",
+  "Import conversation count": "{count} conversations",
+  "Unchanged import counts": "{messages} and {threads} were already in touri. No changes needed.",
   "Checks ready": "{count} checks ready",
   "Enable routine": "Enable {name}",
   "Avatar color": "Color {color}",
@@ -6724,6 +6735,7 @@ const singular: Partial<Record<TranslationKey, [string, string]>> = {
     "{processed} de {total} registro processado",
     "{processed} of {total} record processed",
   ],
+  "Import conversation count": ["{count} conversa", "{count} conversation"],
   "Import message count": ["{count} mensagem", "{count} message"],
   "Imported conversation count": ["{count} conversa importada", "{count} imported conversation"],
   "A cada hora, aos {minute} minutos": ["A cada hora, ao {minute} minuto", "Every hour at {minute} minute past"],
@@ -6773,11 +6785,15 @@ export const t = (
   const count = key === "A cada hora, aos {minute} minutos" ? params.minute : (params.count ?? params.n)
   if (one && typeof count === "number") template = plural(count, one, template, locale)
   const values =
-    key === "Import counts"
+    key === "Import counts" || key === "Unchanged import counts"
       ? {
           ...params,
           messages: t("Import message count", { count: Number(params.messages) }, locale),
-          threads: t("Imported conversation count", { count: Number(params.threads) }, locale),
+          threads: t(
+            key === "Import counts" ? "Imported conversation count" : "Import conversation count",
+            { count: Number(params.threads) },
+            locale,
+          ),
         }
       : params
   return template.replace(/\{(\w+)\}/g, (_, name: string) => String(values[name] ?? `{${name}}`))

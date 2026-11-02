@@ -1851,6 +1851,14 @@ Existing local bots never filter the source, including when a local bot has the 
 there are no local bots. Before review, the wizard explains this scope instead of listing local
 bots; the review summary confirms that all source bots will be imported.
 
+The second step is **Opções / Options**, with a neutral explanation that every archive bot is
+included. After a dry run, review shows the total archive bots (created + updated + unchanged).
+When records are unchanged in every category and none were created or updated, completion uses a
+neutral **Tudo já estava atualizado / Everything was already up to date** card. Its message and
+conversation totals use localized singular/plural forms. The detail report says **Já no touri /
+Already in touri** and shows unchanged counts, so its metrics agree with the summary. Mixed or new
+imports retain the created-record report and successful-import summary.
+
 The legacy import wizard stays on review while its background job runs. It checks the returned
 job ID sequentially, waiting one second after each status response, with a 30-second deadline per
 request. An unavailable status read retries that same job and shows a translated waiting message.
