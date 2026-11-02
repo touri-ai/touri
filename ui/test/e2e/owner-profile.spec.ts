@@ -38,7 +38,7 @@ for (const width of [1440, 390])
         })
       if (evidence) {
         await navigation(page, width)
-        await page.getByRole("button", { name: "Você", exact: true }).click()
+        await page.locator(".user-chip").click()
         await page.getByRole("tab", { name: "Aparência", exact: true }).click()
         await page.screenshot({
           animations: "disabled",
@@ -122,10 +122,10 @@ async function navigation(page: Page, width: number) {
 }
 async function openProfile(page: Page, width: number) {
   await navigation(page, width)
-  await page.getByRole("button", { name: "Você", exact: true }).click()
+  await page.locator(".user-chip").click()
   await page.getByRole("tab", { name: "Aparência", exact: true }).click()
   await expect(page.getByRole("dialog").getByRole("tab")).toHaveCount(5)
-  await page.getByRole("button", { name: /^Perfil/ }).click()
+  await expect(page.getByRole("button", { name: /^Perfil/ })).toHaveAttribute("aria-expanded", "true")
 }
 async function saveProfile(page: Page) {
   await page.getByRole("button", { name: "Salvar preferências", exact: true }).click()

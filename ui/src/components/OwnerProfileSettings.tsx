@@ -7,8 +7,10 @@ import { PersonAvatar } from "./PersonAvatar"
 export const OwnerProfileSettings = ({
   profile,
   onChange,
+  focusName = false,
 }: {
   profile: OwnerProfile
+  focusName?: boolean
   onChange: (profile: OwnerProfile) => void
 }) => {
   const [source, setSource] = useState<ImageBitmap | null>(null)
@@ -82,6 +84,7 @@ export const OwnerProfileSettings = ({
       <label htmlFor="owner-name">{t("Profile name")}</label>
       <input
         id="owner-name"
+        data-initial-focus={focusName || undefined}
         value={profile.name}
         maxLength={80}
         onChange={(event) => onChange({ ...profile, name: event.target.value })}

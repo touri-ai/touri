@@ -1307,6 +1307,7 @@ const AppContent = ({ kernel }: AppProps) => {
         <div className="app-grid">
           <SidebarDrawer
             currentPerson={sidebarPerson}
+            ownerProfile={currentPersonId === "owner" ? data.settings?.ownerProfile : undefined}
             onSidebarModeChange={switchSidebarMode}
             // A drawer that remounts must not reapply a request the person already left.
             sidebarModeRequest={sidebarModeRequest?.mode === sidebarMode ? sidebarModeRequest : null}

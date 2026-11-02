@@ -86,15 +86,7 @@ export const SettingsModal = ({
 }: SettingsModalProps) => {
   const host = useHost(api)
   const serverMode = useIsServerMode()
-  const [section, setSection] = useState(
-    initialSection === "report" || initialSection === "general"
-      ? "diagnostics"
-      : initialSection === "cloud"
-        ? "privacy"
-        : initialSection === "shortcuts"
-          ? "appearance"
-          : (initialSection ?? "appearance"),
-  )
+  const [section, setSection] = useState(getInitialSettingsSection(initialSection))
   useSettingFocus(focusSetting)
   const [reportOpen, setReportOpen] = useState(initialSection === "report")
   const [ownerProfile, setOwnerProfile] = useState(settings?.ownerProfile ?? { name: "", avatar: null })
@@ -249,8 +241,16 @@ export const SettingsModal = ({
             </div>
           </SettingsDisclosure>
           {canEditOwnerProfile && (
-            <SettingsDisclosure title={t("Profile")} description={t("Your name and avatar in conversations.")}>
-              <OwnerProfileSettings profile={ownerProfile} onChange={setOwnerProfile} />
+            <SettingsDisclosure
+              title={t("Profile")}
+              description={t("Your name and avatar in conversations.")}
+              defaultOpen={initialSection === "profile"}
+            >
+              <OwnerProfileSettings
+                profile={ownerProfile}
+                onChange={setOwnerProfile}
+                focusName={initialSection === "profile"}
+              />
             </SettingsDisclosure>
           )}
         </SettingsPane>
@@ -518,3 +518,12 @@ export const SettingsModal = ({
 }
 
 const SettingsPaneLoading = () => <p role="status">{t("Loading")}</p>
+
+const getInitialSettingsSection = (section: string | undefined): string => {
+  if (!section) return "appearance"
+  if (section === "report" || section === "general") return "diagnostics"
+  if (section === "cloud") return "privacy"
+  if (section === "shortcuts" || section === "profile") return "appearance"
+
+  return section
+}
