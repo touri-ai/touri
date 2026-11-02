@@ -513,7 +513,7 @@ it.each([false, true])("read recovery never retries a task (visible failed reply
   expect(request).not.toHaveBeenCalledWith("POST /runs/:id/retry", expect.anything(), expect.anything())
 })
 
-it("names recorded actions and exposes uncertain outcomes before opening their details", () => {
+it("names recorded actions and exposes uncertain outcomes before opening their details", async () => {
   const command: MessagePart = {
     type: "command",
     callId: "uncertain-command",
@@ -540,7 +540,9 @@ it("names recorded actions and exposes uncertain outcomes before opening their d
     />,
   )
 
-  fireEvent.click(screen.getByRole("button", { name: "Ver ações realizadas", exact: true }))
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Ver ações realizadas", exact: true }))
+  })
 
   const actions = screen.getByRole("region", { name: "Ações registradas", exact: true })
   const commandDetails = within(actions).getByRole("button", { name: "Comando: ls notas/ · Resultado incerto" })
@@ -550,7 +552,7 @@ it("names recorded actions and exposes uncertain outcomes before opening their d
   expect(within(actions).queryByText(/Ações registradas \d/)).not.toBeInTheDocument()
 })
 
-it("sanitizes recorded action labels as well as expanded details", () => {
+it("sanitizes recorded action labels as well as expanded details", async () => {
   const command: MessagePart = {
     type: "command",
     callId: "redacted-command",
@@ -568,7 +570,9 @@ it("sanitizes recorded action labels as well as expanded details", () => {
     />,
   )
 
-  fireEvent.click(screen.getByRole("button", { name: "Ver ações realizadas", exact: true }))
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Ver ações realizadas", exact: true }))
+  })
   const actions = screen.getByRole("region", { name: "Ações registradas", exact: true })
   fireEvent.click(within(actions).getByRole("button", { name: "Comando: echo password=[segredo]" }))
 
