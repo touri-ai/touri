@@ -34,7 +34,7 @@ test.each(["running", "succeeded"] as const)("%s channel activity retains the me
   expect(readWorkspaceActivity(db, { personId: "outsider", channelIds: [] }).runs).toEqual([])
 })
 
-test("persisted work snapshots identify one execution under its channel turn", () => {
+test("persisted work candidates retain the channel request and identify its single execution", () => {
   const db = getDatabase("running")
   const persistence = createRuntimePersistence({ database: db })
 
@@ -49,8 +49,10 @@ test("persisted work snapshots identify one execution under its channel turn", (
     groupTurnId: "turn",
     kind: "execution",
   })
-  expect(work).toHaveLength(1)
-  expect(work[0]).toMatchObject({ id: "execution", groupTurnId: "turn", kind: "execution" })
+  expect(work.map((run) => run.id)).toEqual(["turn", "execution"])
+  expect(work[0]).toMatchObject({ id: "turn", kind: "coordination", status: "running" })
+  expect(work[1]).toMatchObject({ id: "execution", groupTurnId: "turn", kind: "execution" })
+  expect(work.filter((run) => run.kind === "execution")).toHaveLength(1)
   expect(persistence.getRun("turn")).toMatchObject({ kind: "coordination" })
   expect(persistence.listRuns("channel")[0]).toMatchObject({ kind: "coordination" })
   expect(persistence.listRuns("participant")[0]).toMatchObject({ kind: "execution" })
@@ -149,8 +151,8 @@ test("a queued channel request stays in work before it has an execution", () => 
   const work = persistence.listWorkRuns()
   const plan = db.query(`EXPLAIN QUERY PLAN ${WORK_RUNS_SQL}`).all() as { detail: string }[]
 
-  expect(work.map((run) => run.id)).toEqual(["execution", "waiting"])
-  expect(work[1]).toMatchObject({ kind: "coordination", status: "queued", threadId: "channel", origin: "message" })
+  expect(work.map((run) => run.id)).toEqual(["turn", "execution", "waiting"])
+  expect(work[2]).toMatchObject({ kind: "coordination", status: "queued", threadId: "channel", origin: "message" })
   expect(plan.some(({ detail }) => /runs_active_order/.test(detail))).toBe(true)
   expect(plan.some(({ detail }) => /SCAN (?:transcript_entries|messages|group_turns)/.test(detail))).toBe(false)
 })
