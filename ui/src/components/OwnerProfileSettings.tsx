@@ -1,5 +1,5 @@
 import type { OwnerProfile } from "@touri/contracts"
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { t } from "../i18n"
 import { AvatarPicker } from "./AvatarPicker"
 import { PersonAvatar } from "./PersonAvatar"
@@ -8,18 +8,30 @@ export const OwnerProfileSettings = ({
   profile,
   onChange,
   focusName = false,
+  onPendingChange,
 }: {
   profile: OwnerProfile
   focusName?: boolean
   onChange: (profile: OwnerProfile) => void
+  onPendingChange?: (pending: boolean) => void
 }) => {
   const [source, setSource] = useState<ImageBitmap | null>(null)
   const [zoom, setZoom] = useState(1)
   const [horizontal, setHorizontal] = useState(50)
   const [vertical, setVertical] = useState(50)
   const [error, setError] = useState(false)
+  const [encodingPhoto, setEncodingPhoto] = useState(false)
   const canvas = useRef<HTMLCanvasElement>(null)
   const request = useRef(0)
+  const latest = useRef({ profile, onChange, onPendingChange, source })
+  latest.current = { profile, onChange, onPendingChange, source }
+  const avatarBeforeCrop = useRef<OwnerProfile["avatar"]>(null)
+  const pending = useRef({ reading: false, encoding: false })
+  const setPhotoPending = useCallback((change: { reading?: boolean; encoding?: boolean }) => {
+    pending.current = { ...pending.current, ...change }
+    setEncodingPhoto(pending.current.encoding)
+    latest.current.onPendingChange?.(pending.current.reading || pending.current.encoding)
+  }, [])
   useEffect(
     () => () => {
       source?.close()
@@ -29,12 +41,18 @@ export const OwnerProfileSettings = ({
   useEffect(
     () => () => {
       request.current += 1
+      setPhotoPending({ reading: false, encoding: false })
     },
-    [],
+    [setPhotoPending],
   )
   useEffect(() => {
     const context = canvas.current?.getContext("2d")
-    if (!source || !context) return
+    if (!source) return
+    if (!context) {
+      setError(true)
+      setPhotoPending({ encoding: false })
+      return
+    }
     const side = Math.min(source.width, source.height) / zoom
     context.clearRect(0, 0, 256, 256)
     context.drawImage(
@@ -48,15 +66,56 @@ export const OwnerProfileSettings = ({
       256,
       256,
     )
-  }, [source, zoom, horizontal, vertical])
+    // Cancel callbacks from an earlier crop before they can replace the current draft.
+    let active = true
+    const photoRequest = request.current
+    const reader = new FileReader()
+    const fail = () => {
+      if (!active) return
+      if (photoRequest === request.current) setError(true)
+      setPhotoPending({ encoding: false })
+    }
+    reader.onerror = fail
+    reader.onload = () => {
+      if (!active) return
+      const dataUrl = reader.result
+      if (typeof dataUrl !== "string" || dataUrl.length > 100_000) {
+        fail()
+        return
+      }
+      if (photoRequest === request.current) setError(false)
+      latest.current.onChange({ ...latest.current.profile, avatar: { kind: "image", dataUrl } })
+      setPhotoPending({ encoding: false })
+    }
+    setPhotoPending({ encoding: true })
+    canvas.current?.toBlob(
+      (blob) => {
+        if (!active) return
+        if (!blob) {
+          fail()
+          return
+        }
+        reader.readAsDataURL(blob)
+      },
+      "image/webp",
+      0.85,
+    )
+
+    return () => {
+      active = false
+      reader.abort()
+    }
+  }, [source, zoom, horizontal, vertical, setPhotoPending])
   const upload = async (file: File | undefined): Promise<void> => {
     if (!file) return
     const version = ++request.current
     setError(false)
     if (file.size > 5_000_000 || !["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
       setError(true)
+      setPhotoPending({ reading: false })
       return
     }
+    setPhotoPending({ reading: true })
     try {
       const original = await createImageBitmap(file)
       const scale = Math.min(1, 1024 / Math.max(original.width, original.height))
@@ -72,9 +131,13 @@ export const OwnerProfileSettings = ({
       setZoom(1)
       setHorizontal(50)
       setVertical(50)
+      if (!latest.current.source) avatarBeforeCrop.current = latest.current.profile.avatar
+      setPhotoPending({ reading: false, encoding: true })
       setSource(bitmap)
     } catch {
-      if (version === request.current) setError(true)
+      if (version !== request.current) return
+      setError(true)
+      setPhotoPending({ reading: false })
     }
   }
   const mascot =
@@ -143,19 +206,25 @@ export const OwnerProfileSettings = ({
           <button
             type="button"
             className="button button-quiet"
+            disabled={error || encodingPhoto}
             onClick={() => {
-              const dataUrl = canvas.current?.toDataURL("image/webp", 0.85)
-              if (!dataUrl || dataUrl.length > 100_000) {
-                setError(true)
-                return
-              }
-              onChange({ ...profile, avatar: { kind: "image", dataUrl } })
+              request.current += 1
+              setPhotoPending({ reading: false, encoding: false })
               setSource(null)
             }}
           >
             {t("Use cropped photo")}
           </button>
-          <button type="button" className="button button-quiet" onClick={() => setSource(null)}>
+          <button
+            type="button"
+            className="button button-quiet"
+            onClick={() => {
+              request.current += 1
+              setPhotoPending({ reading: false, encoding: false })
+              setSource(null)
+              onChange({ ...profile, avatar: avatarBeforeCrop.current })
+            }}
+          >
             {t("Cancel")}
           </button>
         </div>
@@ -165,6 +234,7 @@ export const OwnerProfileSettings = ({
         label={t("Create profile mascot")}
         onChange={(choice) => {
           request.current += 1
+          setPhotoPending({ reading: false, encoding: false })
           setSource(null)
           onChange({ ...profile, avatar: { kind: "mascot", ...mascot, ...choice } })
         }}
@@ -175,6 +245,7 @@ export const OwnerProfileSettings = ({
         disabled={!profile.avatar}
         onClick={() => {
           request.current += 1
+          setPhotoPending({ reading: false, encoding: false })
           setSource(null)
           onChange({ ...profile, avatar: null })
         }}

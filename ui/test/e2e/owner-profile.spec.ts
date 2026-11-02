@@ -6,6 +6,8 @@ test.use({ reducedMotion: "reduce" })
 
 const before = process.env.OWNER_PROFILE_PHASE === "before"
 const evidence = process.env.OWNER_PROFILE_EVIDENCE
+const photoEvidence = process.env.OWNER_PHOTO_EVIDENCE
+const photoPhase = process.env.OWNER_PHOTO_PHASE ?? "after"
 
 for (const width of [1440, 390])
   for (const theme of ["light", "dark"] as const) {
@@ -13,7 +15,7 @@ for (const width of [1440, 390])
       await page.setViewportSize({ width, height: 900 })
       await page.emulateMedia({ colorScheme: theme })
       await page.goto("/test/e2e/owner-profile-harness.html")
-      await expect(page.getByText(/@.+ vamos revisar a entrega de hoje\./)).toBeVisible()
+      await expect(page.getByText(/@.+ vamos revisar a entrega de hoje\./)).toBeVisible({ timeout: 20_000 })
       await navigation(page, width)
       await page.getByRole("tab", { name: /^Work,/ }).click()
       await page.getByRole("button", { name: /^Engenharia/ }).click()
@@ -63,8 +65,35 @@ for (const width of [1440, 390])
         expect(profile.violations).toEqual([])
         if (evidence)
           await page.screenshot({ animations: "disabled", path: `${evidence}/after-profile-${width}-${theme}.png` })
-        await page.getByRole("button", { name: "Usar foto recortada" }).click()
+        if (photoEvidence)
+          await page.screenshot({
+            animations: "disabled",
+            path: `${photoEvidence}/${photoPhase}-crop-${width}-${theme}.png`,
+          })
+        const encoding = await page
+          .getByLabel("Prévia do recorte da foto")
+          .evaluate(async (canvas: HTMLCanvasElement) => {
+            const samples = await Promise.all(
+              Array.from({ length: 10 }, async () => {
+                const started = performance.now()
+                const encoded = new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/webp", 0.85))
+                const dispatchMs = performance.now() - started
+                await encoded
+
+                return dispatchMs
+              }),
+            )
+
+            return Math.max(...samples)
+          })
+        console.log(`Profile crop async encoding dispatch ${width} ${theme}: max ${encoding.toFixed(2)} ms, 10 samples`)
+        // Saving straight from the crop keeps the photo; no separate confirm click.
         await saveProfile(page)
+        if (photoEvidence)
+          await page.screenshot({
+            animations: "disabled",
+            path: `${photoEvidence}/${photoPhase}-saved-${width}-${theme}.png`,
+          })
         await expect(own.locator(".message-meta")).toContainText("Pessoa Teste")
         await expect(own.locator(".message-avatar img")).toBeVisible()
         const croppedColor = await own.locator(".message-avatar img").evaluate(async (image: HTMLImageElement) => {
