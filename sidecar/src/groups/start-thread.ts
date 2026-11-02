@@ -1,60 +1,73 @@
 import type { Database } from "bun:sqlite"
 import type { Kernel, Message, Thread, ToolContext, ToolRegistration } from "@touri/contracts"
+import { writeDatabaseAsync } from "../kernel/database-write"
 import { getDelegation } from "./security"
 
-export const startMessageThread = (kernel: Kernel, parent: Thread, message: Message, title?: string): Thread => {
+export const startMessageThread = async (
+  kernel: Kernel,
+  parent: Thread,
+  message: Message,
+  title?: string,
+  canStart: () => boolean = () => true,
+): Promise<Thread> => {
   const db = kernel.db as Database
   const store = kernel.services.use("store.api")
   if (!store || message.threadId !== parent.id || !["user", "assistant"].includes(message.role))
     throw new Error("Mensagem indisponível")
 
-  return db
-    .transaction(() => {
-      const existing = db
-        .query("SELECT id FROM threads WHERE parent_thread_id = ? AND anchor_message_id = ?")
-        .get(parent.id, message.id) as {
-        id: string
-      } | null
-      if (existing) {
-        const thread = store.getThread({ threadId: existing.id, includeArchived: true })
-        if (thread && !thread.archivedAt) return thread
-        if (thread) {
-          db.query("UPDATE threads SET archived_at = NULL, updated_at = ? WHERE id = ?").run(Date.now(), thread.id)
-          const restored = { ...thread, archivedAt: null }
-          kernel.publish({ type: "thread.updated", thread: restored })
-          return restored
-        }
+  return writeDatabaseAsync(db, () => {
+    if (!canStart()) throw new Error("Mensagem indisponível")
+
+    const existing = db
+      .query("SELECT id FROM threads WHERE parent_thread_id = ? AND anchor_message_id = ?")
+      .get(parent.id, message.id) as {
+      id: string
+    } | null
+    if (existing) {
+      const thread = store.getThread({ threadId: existing.id, includeArchived: true })
+      if (thread && !thread.archivedAt) return thread
+      if (thread) {
+        db.query("UPDATE threads SET archived_at = NULL, updated_at = ? WHERE id = ?").run(Date.now(), thread.id)
+        const restored = Object.assign({}, thread, { archivedAt: null })
+        kernel.publish({ type: "thread.updated", thread: restored })
+        return restored
       }
-      const result = store.createThread({
-        botId: parent.botId,
-        kind: "chat",
-        title: title?.trim().slice(0, 200) || message.text.trim().slice(0, 80) || "Thread",
-        parentThreadId: parent.id,
-        anchorMessageId: message.id,
-        ...(parent.groupId ? { groupId: parent.groupId } : {}),
-        ...(parent.ownerPersonId ? { ownerPersonId: parent.ownerPersonId } : {}),
-      })
-      if (!result.success) throw new Error(result.error)
-      // Copy only the visible text: tool output and approvals never become instructions or permissions.
-      const context = store.insertMessage({
-        message: {
-          id: kernel.newId(),
-          threadId: result.thread.id,
-          parentId: null,
-          role: message.role,
-          kind: "text",
-          status: "complete",
-          runId: null,
-          text: message.text,
-          parts: message.parts.filter((part) => part.type === "text" || part.type === "image" || part.type === "file"),
-          sender: message.sender,
-          source: "local",
-        },
-      })
-      if (!context.success) throw new Error(context.error)
-      return store.getThread({ threadId: result.thread.id }) ?? result.thread
+    }
+    const input: Parameters<typeof store.createThread>[0] = {
+      botId: parent.botId,
+      kind: "chat",
+      title: title?.trim().slice(0, 200) || message.text.trim().slice(0, 80) || "Thread",
+      parentThreadId: parent.id,
+      anchorMessageId: message.id,
+    }
+    const result = store.createThread(
+      Object.assign(
+        {},
+        input,
+        parent.groupId ? { groupId: parent.groupId } : {},
+        parent.ownerPersonId ? { ownerPersonId: parent.ownerPersonId } : {},
+      ),
+    )
+    if (!result.success) throw new Error(result.error)
+    // Copy only the visible text: tool output and approvals never become instructions or permissions.
+    const context = store.insertMessage({
+      message: {
+        id: kernel.newId(),
+        threadId: result.thread.id,
+        parentId: null,
+        role: message.role,
+        kind: "text",
+        status: "complete",
+        runId: null,
+        text: message.text,
+        parts: message.parts.filter((part) => part.type === "text" || part.type === "image" || part.type === "file"),
+        sender: message.sender,
+        source: "local",
+      },
     })
-    .immediate()
+    if (!context.success) throw new Error(context.error)
+    return store.getThread({ threadId: result.thread.id }) ?? result.thread
+  })
 }
 
 /** Accept only a direct imperative in the current human message; quotes and embedded documents fail closed. */
@@ -153,7 +166,13 @@ export const createThreadTool = (kernel: Kernel): ToolRegistration => ({
       }
     const input = args && typeof args === "object" && !Array.isArray(args) ? (args as { title?: unknown }) : {}
     const title = typeof input.title === "string" ? input.title : undefined
-    const thread = startMessageThread(kernel, request.thread, request.message, title)
+    const thread = await startMessageThread(
+      kernel,
+      request.thread,
+      request.message,
+      title,
+      () => !ctx.signal.aborted && getThreadRequest(kernel, ctx)?.message.id === request.message.id,
+    )
 
     return {
       success: true,

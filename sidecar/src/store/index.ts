@@ -1971,11 +1971,15 @@ export const init = async (
             return errorResponse(404, "NOT_FOUND", "Mensagem não encontrada")
           if (database.query("SELECT 1 FROM thread_deletions WHERE thread_id = ?").get(thread.id))
             return errorResponse(409, "THREAD_DELETING", "Conversa em exclusão")
-          const created = startMessageThread(
+          const created = await startMessageThread(
             kernel,
             thread,
             message,
             typeof record.title === "string" ? record.title : undefined,
+            () =>
+              !signal.aborted &&
+              (!canAccess || !!(actor && canAccess({ personId: actor.id, role: actor.role, threadId: thread.id }))) &&
+              !database.query("SELECT 1 FROM thread_deletions WHERE thread_id = ?").get(thread.id),
           )
 
           return jsonResponse(201, { thread: created })
