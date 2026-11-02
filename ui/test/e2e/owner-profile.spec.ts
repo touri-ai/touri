@@ -63,7 +63,7 @@ for (const width of [1440, 390])
         expect(profile.violations).toEqual([])
         if (evidence)
           await page.screenshot({ animations: "disabled", path: `${evidence}/after-profile-${width}-${theme}.png` })
-        await page.getByRole("button", { name: "Usar foto recortada" }).click()
+        // Saving straight from the crop keeps the photo; no separate confirm click.
         await saveProfile(page)
         await expect(own.locator(".message-meta")).toContainText("Pessoa Teste")
         await expect(own.locator(".message-avatar img")).toBeVisible()

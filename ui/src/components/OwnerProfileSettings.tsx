@@ -20,6 +20,9 @@ export const OwnerProfileSettings = ({
   const [error, setError] = useState(false)
   const canvas = useRef<HTMLCanvasElement>(null)
   const request = useRef(0)
+  const latest = useRef({ profile, onChange })
+  latest.current = { profile, onChange }
+  const avatarBeforeCrop = useRef<OwnerProfile["avatar"]>(null)
   useEffect(
     () => () => {
       source?.close()
@@ -48,6 +51,14 @@ export const OwnerProfileSettings = ({
       256,
       256,
     )
+    // The crop is the photo: "Salvar preferências" keeps it without a separate confirm.
+    const dataUrl = canvas.current?.toDataURL("image/webp", 0.85)
+    if (!dataUrl || dataUrl.length > 100_000) {
+      setError(true)
+      return
+    }
+    setError(false)
+    latest.current.onChange({ ...latest.current.profile, avatar: { kind: "image", dataUrl } })
   }, [source, zoom, horizontal, vertical])
   const upload = async (file: File | undefined): Promise<void> => {
     if (!file) return
@@ -72,6 +83,7 @@ export const OwnerProfileSettings = ({
       setZoom(1)
       setHorizontal(50)
       setVertical(50)
+      if (!source) avatarBeforeCrop.current = profile.avatar
       setSource(bitmap)
     } catch {
       if (version === request.current) setError(true)
@@ -140,22 +152,17 @@ export const OwnerProfileSettings = ({
               onChange={(event) => setVertical(Number(event.target.value))}
             />
           </label>
+          <button type="button" className="button button-quiet" disabled={error} onClick={() => setSource(null)}>
+            {t("Use cropped photo")}
+          </button>
           <button
             type="button"
             className="button button-quiet"
             onClick={() => {
-              const dataUrl = canvas.current?.toDataURL("image/webp", 0.85)
-              if (!dataUrl || dataUrl.length > 100_000) {
-                setError(true)
-                return
-              }
-              onChange({ ...profile, avatar: { kind: "image", dataUrl } })
               setSource(null)
+              onChange({ ...profile, avatar: avatarBeforeCrop.current })
             }}
           >
-            {t("Use cropped photo")}
-          </button>
-          <button type="button" className="button button-quiet" onClick={() => setSource(null)}>
             {t("Cancel")}
           </button>
         </div>
