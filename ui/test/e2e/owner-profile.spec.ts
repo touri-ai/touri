@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright"
 import { expect, type Page, test } from "@playwright/test"
+import { openAppearanceSettings } from "./home-navigation"
 
 test.setTimeout(60_000)
 test.use({ reducedMotion: "reduce" })
@@ -32,6 +33,9 @@ for (const width of [1440, 390])
           await own.locator(".message-body").evaluate((element) => getComputedStyle(element).backgroundColor),
         ).toBe("rgba(0, 0, 0, 0)")
         await expect(own.locator(".message-meta")).toContainText("Você")
+        const integration = page.locator(`[data-message-id^="integration-"]`)
+        await expect(integration.locator('.message-avatar [data-bot-id="integration:delivery"]')).toBeVisible()
+        await expect(integration.locator(".message-meta")).toContainText("touri avisos")
       }
       if (evidence)
         await page.screenshot({
@@ -40,8 +44,7 @@ for (const width of [1440, 390])
         })
       if (evidence) {
         await navigation(page, width)
-        await page.locator(".user-chip").click()
-        await page.getByRole("tab", { name: "Aparência", exact: true }).click()
+        await openAppearanceSettings(page)
         await page.screenshot({
           animations: "disabled",
           path: `${evidence}/${before ? "before" : "after"}-preferences-${width}-${theme}.png`,
@@ -154,7 +157,7 @@ async function openProfile(page: Page, width: number) {
   await page.locator(".user-chip").click()
   await page.getByRole("tab", { name: "Aparência", exact: true }).click()
   await expect(page.getByRole("dialog").getByRole("tab")).toHaveCount(5)
-  await expect(page.getByRole("button", { name: /^Perfil/ })).toHaveAttribute("aria-expanded", "true")
+  await expect(page.getByRole("button", { name: /^Chat, perfil e atalhos/ })).toHaveAttribute("aria-expanded", "true")
 }
 async function saveProfile(page: Page) {
   await page.getByRole("button", { name: "Salvar preferências", exact: true }).click()

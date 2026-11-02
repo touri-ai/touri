@@ -36,9 +36,9 @@ test("channel polish keeps identities, messages and the member panel clear", asy
   await expect
     .poll(async () => {
       const { runs } = (await current.api(`/threads/${thread.id}/runs?all=true`)) as { runs: Run[] }
-      return runs.some((run) => run.groupTurnId && run.status === "succeeded")
+      return runs.map(({ groupTurnId, status, errorClass }) => ({ groupTurnId, status, errorClass }))
     })
-    .toBe(true)
+    .toContainEqual(expect.objectContaining({ groupTurnId: expect.stringMatching(/\S/), status: "succeeded" }))
   await current.api(`/threads/${thread.id}/start-thread`, "POST", { messageId: message.id, title: group.name })
   const { runs: mentionedRuns } = (await current.api(`/threads/${thread.id}/runs?all=true`)) as { runs: Run[] }
   const { routine } = (await current.api("/routines", "POST", {
@@ -59,9 +59,9 @@ test("channel polish keeps identities, messages and the member panel clear", asy
   await expect
     .poll(async () => {
       const { runs } = (await current.api(`/threads/${routineRun.threadId}/runs?all=true`)) as { runs: Run[] }
-      return runs.some((run) => run.groupTurnId && run.status === "succeeded")
+      return runs.map(({ groupTurnId, status, errorClass }) => ({ groupTurnId, status, errorClass }))
     })
-    .toBe(true)
+    .toContainEqual(expect.objectContaining({ groupTurnId: expect.stringMatching(/\S/), status: "succeeded" }))
   for (const index of Array.from({ length: 8 }, (_, index) => index)) {
     await current.api(`/threads/${thread.id}/messages`, "POST", {
       text: `Anotação de demonstração ${index + 1}. ${"A equipe vai conferir o roteiro e os mapas. ".repeat(8)}`,
@@ -125,8 +125,9 @@ test("channel polish keeps identities, messages and the member panel clear", asy
       expect(headerAvatar).toEqual(panelAvatar)
       const ownRows = messages.locator('[data-message-author="own"]')
       await expect(ownRows.first()).toBeVisible()
-      await expect(ownRows.locator(".tb-avatar, .message-meta, .message-role")).toHaveCount(0)
-      await expect(ownRows.first().locator(".visually-hidden")).toHaveText("Você")
+      await expect(ownRows.first().locator(".message-avatar .person-avatar")).toHaveText("PD")
+      await expect(ownRows.first().locator(".message-meta .message-role")).toHaveText("Você")
+      await expect(ownRows.first().locator(".message-meta time")).toBeVisible()
       expect(
         await panel
           .locator("*")
@@ -158,6 +159,9 @@ test("channel polish keeps identities, messages and the member panel clear", asy
   if (phase === "before") return
 
   await page.setViewportSize({ width: 1440, height: 900 })
+  // Resizing can already reveal the end; arrange a scrolled position before testing the return action.
+  await page.getByTestId("virtual-message-list").evaluate((element) => element.scrollTo(0, 0))
+  await expect(page.getByRole("button", { name: "Voltar ao fim", exact: true })).toBeVisible()
   await page.getByRole("button", { name: "Voltar ao fim", exact: true }).click()
   await input.fill("Mensagem de demonstração entregue.")
   await input.press("Enter")

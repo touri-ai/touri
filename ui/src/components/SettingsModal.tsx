@@ -188,10 +188,24 @@ export const SettingsModal = ({
             </SettingsRow>
           </SettingsGroup>
           <SettingsDisclosure
-            title={t("Chat, barra lateral e atalhos")}
-            description={t("Ajuste as prévias, a ordem dos bots e veja as teclas rápidas.")}
-            defaultOpen={initialSection === "shortcuts"}
+            title={t("Chat, perfil e atalhos")}
+            description={t("Seu perfil, as prévias, a ordem dos bots e os atalhos.")}
+            defaultOpen={initialSection === "shortcuts" || initialSection === "profile"}
           >
+            {canEditOwnerProfile && (
+              <div className="settings-group">
+                <div className="settings-row-copy owner-profile-heading">
+                  <strong>{t("Profile")}</strong>
+                  <p>{t("Your name and avatar in conversations.")}</p>
+                </div>
+                <OwnerProfileSettings
+                  profile={ownerProfile}
+                  onChange={setOwnerProfile}
+                  focusName={initialSection === "profile"}
+                  onPendingChange={setPreparingOwnerPhoto}
+                />
+              </div>
+            )}
             <SettingsGroup>
               <SettingsRow
                 title={SETTINGS.inlinePreview.label}
@@ -241,20 +255,6 @@ export const SettingsModal = ({
               </div>
             </div>
           </SettingsDisclosure>
-          {canEditOwnerProfile && (
-            <SettingsDisclosure
-              title={t("Profile")}
-              description={t("Your name and avatar in conversations.")}
-              defaultOpen={initialSection === "profile"}
-            >
-              <OwnerProfileSettings
-                profile={ownerProfile}
-                onChange={setOwnerProfile}
-                focusName={initialSection === "profile"}
-                onPendingChange={setPreparingOwnerPhoto}
-              />
-            </SettingsDisclosure>
-          )}
         </SettingsPane>
         <SettingsPane {...pane("privacy")}>
           <p className="field-help">

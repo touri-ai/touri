@@ -21,7 +21,7 @@ it("opens the profile editor directly from the sidebar without saving a draft", 
 
   expect(await screen.findByRole("textbox", { name: "Nome do perfil" })).toBeVisible()
   await waitFor(() => expect(screen.getByRole("textbox", { name: "Nome do perfil" })).toHaveFocus())
-  expect(screen.getByRole("button", { name: /^Perfil/ })).toHaveAttribute("aria-expanded", "true")
+  expect(screen.getByRole("button", { name: /^Chat, perfil e atalhos/ })).toHaveAttribute("aria-expanded", "true")
   expect(screen.getAllByRole("tab").filter((tab) => tab.closest("[role=dialog]"))).toHaveLength(5)
   expect(api.calls.filter((call) => call.route === "PATCH /settings")).toHaveLength(0)
 })
@@ -86,7 +86,7 @@ it("keeps another person's identity separate from the owner profile", async () =
   fireEvent.click(getProfileChip())
 
   expect(await screen.findByRole("dialog")).toBeVisible()
-  expect(screen.queryByRole("button", { name: /^Perfil/ })).toBeNull()
+  expect(screen.queryByRole("textbox", { name: "Nome do perfil" })).toBeNull()
   expect(getProfileChip()).not.toHaveTextContent("Perfil Proprietário")
   expect(getProfileChip().querySelector(".person-initials")).toBeNull()
 })

@@ -47,6 +47,21 @@ const getMessages = (threadId: string): Message[] => [
     createdAt: timestamp + 1000,
     updatedAt: timestamp + 1000,
   },
+  {
+    id: `integration-${threadId}`,
+    threadId,
+    parentId: `bot-${threadId}`,
+    role: "user",
+    kind: "notice",
+    status: "complete",
+    runId: null,
+    text: "A entrega de demonstração foi registrada.",
+    parts: [{ type: "text", text: "A entrega de demonstração foi registrada." }],
+    sender: { id: "integration:delivery", name: "touri avisos", kind: "integration", avatarSeed: "delivery" },
+    source: "local",
+    createdAt: timestamp + 2000,
+    updatedAt: timestamp + 2000,
+  },
 ]
 const request: ApiRequest = async (route, input, path, transport) => {
   if (route === "GET /session")
@@ -58,10 +73,11 @@ const request: ApiRequest = async (route, input, path, transport) => {
   if (route === "GET /threads/:id/messages")
     return {
       messages: getMessages(path?.id ?? thread.id),
-      activeLeafId: `bot-${path?.id ?? thread.id}`,
+      activeLeafId: `integration-${path?.id ?? thread.id}`,
     } as ApiRoutes[typeof route]["res"]
   return base.request(route, input, path, transport)
 }
 initializeTheme()
+localStorage.setItem("touri.sidebar.mode", "bots")
 const root = document.getElementById("root")
 if (root) createRoot(root).render(<App kernel={{ services: { api: { ...base, isMock: false, request } } }} />)

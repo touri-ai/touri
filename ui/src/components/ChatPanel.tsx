@@ -1226,9 +1226,9 @@ const MessageBubbleRow = ({
           person={{
             id: personSender?.id ?? currentPersonId ?? "owner",
             name: profile?.name || personSender?.name || t("Você"),
-            avatarSeed: personSender?.avatarSeed ?? "owner",
+            avatarSeed: personSender?.avatarSeed ?? personSender?.id ?? "owner",
           }}
-          avatar={profile?.avatar ?? null}
+          avatar={personSender?.kind === "integration" ? undefined : (profile?.avatar ?? null)}
         />
       )
     if (senderBot) return <BotAvatar bot={senderBot} size={28} state={mascotState} />

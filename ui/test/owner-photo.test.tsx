@@ -46,7 +46,7 @@ it("saves the current crop without a separate crop confirmation", async () => {
   installPhotoReader()
   const save = vi.fn(async () => {})
   render(<SettingsModal settings={null} onClose={vi.fn()} onSave={save} />)
-  fireEvent.click(screen.getByRole("button", { name: /^Perfil/ }))
+  fireEvent.click(screen.getByRole("button", { name: /^Chat, perfil e atalhos/ }))
 
   await uploadPhoto()
   fireEvent.change(screen.getByLabelText("Nome do perfil"), { target: { value: "Pessoa Teste" } })
@@ -105,7 +105,7 @@ it("waits for asynchronous photo encoding before saving preferences", async () =
   const encode = vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation(() => {})
   const save = vi.fn(async () => {})
   render(<SettingsModal settings={null} onClose={vi.fn()} onSave={save} />)
-  fireEvent.click(screen.getByRole("button", { name: /^Perfil/ }))
+  fireEvent.click(screen.getByRole("button", { name: /^Chat, perfil e atalhos/ }))
   await uploadPhoto()
 
   const button = screen.getByRole("button", { name: "Salvar preferências" })
@@ -145,7 +145,7 @@ it("finishing an earlier crop does not enable saving during a replacement read",
   const read = installPhotoReader()
   const encode = vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation(() => {})
   render(<SettingsModal settings={null} onClose={vi.fn()} onSave={vi.fn(async () => {})} />)
-  fireEvent.click(screen.getByRole("button", { name: /^Perfil/ }))
+  fireEvent.click(screen.getByRole("button", { name: /^Chat, perfil e atalhos/ }))
   await uploadPhoto()
   const pending = Promise.withResolvers<ImageBitmap>()
   read.mockImplementationOnce(() => pending.promise)

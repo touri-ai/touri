@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { expect, type Locator, type Page, test } from "@playwright/test"
-import { openBotActions, showBotAdvanced, showBotRoutines } from "./home-navigation"
+import { openAppearanceSettings, openBotActions, showBotAdvanced, showBotRoutines } from "./home-navigation"
 import budgets from "./ui-budget.json" with { type: "json" }
 
 type Screen = keyof typeof budgets
@@ -185,7 +185,7 @@ const openScreen = async (page: Page, screen: Screen, width: number): Promise<Lo
     return page.locator("#sidebar-advanced-pages")
   }
   if (screen === "app-settings") {
-    await page.locator(".user-chip").click()
+    await openAppearanceSettings(page)
     return page.getByRole("dialog").last()
   }
   if (screen === "search") {

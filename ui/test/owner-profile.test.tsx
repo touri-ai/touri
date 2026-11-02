@@ -92,7 +92,8 @@ it("keeps profile editing inside the existing five preference sections", () => {
   render(<SettingsModal settings={null} onClose={vi.fn()} onSave={vi.fn(async () => {})} />)
 
   expect(screen.getAllByRole("tab")).toHaveLength(5)
-  fireEvent.click(screen.getByRole("button", { name: /^Perfil/ }))
+  expect(screen.queryByRole("button", { name: /^Perfil/ })).toBeNull()
+  fireEvent.click(screen.getByRole("button", { name: /^Chat, perfil e atalhos/ }))
 
   expect(screen.getByRole("textbox", { name: "Nome do perfil" })).toBeVisible()
 })
@@ -100,13 +101,15 @@ it("keeps profile editing inside the existing five preference sections", () => {
 it("does not offer the owner's profile editor to another person", () => {
   render(<SettingsModal settings={null} canEditOwnerProfile={false} onClose={vi.fn()} onSave={vi.fn(async () => {})} />)
 
-  expect(screen.queryByRole("button", { name: /^Perfil/ })).toBeNull()
+  fireEvent.click(screen.getByRole("button", { name: /^Chat, perfil e atalhos/ }))
+
+  expect(screen.queryByRole("textbox", { name: "Nome do perfil" })).toBeNull()
 })
 
 it("saves a profile draft only after explicit confirmation", async () => {
   const save = vi.fn(async () => {})
   render(<SettingsModal settings={null} onClose={vi.fn()} onSave={save} />)
-  fireEvent.click(screen.getByRole("button", { name: /^Perfil/ }))
+  fireEvent.click(screen.getByRole("button", { name: /^Chat, perfil e atalhos/ }))
 
   fireEvent.change(screen.getByRole("textbox", { name: "Nome do perfil" }), { target: { value: "Pessoa Teste" } })
 

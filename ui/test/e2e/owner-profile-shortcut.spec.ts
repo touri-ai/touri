@@ -26,12 +26,24 @@ for (const width of [1440, 390])
       await chip.focus()
       await page.keyboard.press("Enter")
 
-      const profile = page.getByRole("button", { name: /^Perfil/ })
+      const profile = page.getByRole("button", { name: /^Chat, perfil e atalhos/ })
       await expect(profile).toHaveAttribute("aria-expanded", before ? "false" : "true")
       await expect(page.getByRole("dialog").getByRole("tab")).toHaveCount(5)
       if (!before) {
         await expect(page.getByLabel("Nome do perfil", { exact: true })).toBeFocused()
         await expect(page.getByLabel("Nome do perfil", { exact: true })).toBeInViewport()
+        const editor = page.locator(".owner-profile-settings")
+        const firstGroup = page.locator(".settings-disclosure-content > .settings-group").first()
+        await expect(firstGroup.locator(".owner-profile-settings")).toBeVisible()
+        await expect(page.locator(".settings-group-card .owner-profile-settings")).toHaveCount(0)
+        const rowPadding = await page
+          .locator(".settings-row")
+          .first()
+          .evaluate((row) => getComputedStyle(row).paddingLeft)
+        await expect(editor).toHaveCSS("padding-left", rowPadding)
+        await expect(editor).toHaveCSS("padding-right", rowPadding)
+        const titleSize = await profile.locator("strong").evaluate((title) => getComputedStyle(title).fontSize)
+        await expect(page.locator(".owner-profile-heading strong")).toHaveCSS("font-size", titleSize)
       }
       if (evidence)
         await page.screenshot({

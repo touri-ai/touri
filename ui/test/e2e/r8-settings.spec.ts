@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test"
-import { openGlobalPage, showBotAdvanced } from "./home-navigation"
+import { openAppearanceSettings, openGlobalPage, showBotAdvanced } from "./home-navigation"
 
 const phase = process.env.R8_PHASE ?? "after"
 const evidence = "../docs/qa/r8/settings"
@@ -61,11 +61,11 @@ for (const width of [1440, 1100]) {
           path: `${evidence}/${phase}-bot-routines${width === 1100 ? "-narrow" : ""}-${theme}.png`,
         })
       } else await page.getByRole("button", { name: "Fechar diálogo" }).click()
-      await page.getByRole("button", { name: "Você", exact: true }).click()
+      await openAppearanceSettings(page)
       await shot("preferences")
       if (phase === "after") {
         await expect(page.getByRole("dialog")).not.toContainText("LOCAL PREFERENCES")
-        await page.getByText("Chat, barra lateral e atalhos").click()
+        await page.getByText("Chat, perfil e atalhos").click()
         await shot("preferences-shortcuts")
         await page.getByRole("tab", { name: "Privacidade" }).click()
         await shot("preferences-privacy")

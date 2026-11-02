@@ -2268,9 +2268,8 @@ export const ptBR = {
   Escuro: "Escuro",
   Claro: "Claro",
   Sistema: "Sistema",
-  "Chat, barra lateral e atalhos": "Chat, barra lateral e atalhos",
-  "Ajuste as prévias, a ordem dos bots e veja as teclas rápidas.":
-    "Ajuste as prévias, a ordem dos bots e veja as teclas rápidas.",
+  "Chat, perfil e atalhos": "Chat, perfil e atalhos",
+  "Seu perfil, as prévias, a ordem dos bots e os atalhos.": "Seu perfil, as prévias, a ordem dos bots e os atalhos.",
   "Seus dados ficam neste Mac. Conexões externas são opcionais.":
     "Seus dados ficam neste Mac. Conexões externas são opcionais.",
   "Dados, permissões e conexões": "Dados, permissões e conexões",
@@ -5952,9 +5951,8 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   Escuro: "Dark",
   Claro: "Light",
   Sistema: "System",
-  "Chat, barra lateral e atalhos": "Chat, sidebar and shortcuts",
-  "Ajuste as prévias, a ordem dos bots e veja as teclas rápidas.":
-    "Adjust previews and bot order, and find keyboard shortcuts.",
+  "Chat, perfil e atalhos": "Chat, profile and shortcuts",
+  "Seu perfil, as prévias, a ordem dos bots e os atalhos.": "Your profile, previews, bot order and shortcuts.",
   "Seus dados ficam neste Mac. Conexões externas são opcionais.":
     "Your data stays on this Mac. External connections are optional.",
   "Dados, permissões e conexões": "Data, permissions and connections",
