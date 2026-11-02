@@ -8,6 +8,7 @@ import type {
   Id,
   Message,
   NotificationRecord,
+  OwnerProfile,
   Routine,
   RoutineRun,
   Run,
@@ -73,6 +74,7 @@ import "./bot-sidebar.css"
 
 type SidebarProps = {
   currentPerson?: ChannelPerson | undefined
+  ownerProfile?: OwnerProfile | undefined
   groupsLoading?: boolean
   deletedThreadIds?: ReadonlySet<string> | undefined
   threadDeletion?: ThreadDeletion | undefined
@@ -127,7 +129,7 @@ type SidebarProps = {
     | ((threadId: string) => Promise<ApiRoutes["GET /threads/:id/delete-preview"]["res"]>)
     | undefined
   onLoadArchivedThreads?: ((botId: string, before?: string) => Promise<Array<Thread>>) | undefined
-  onSettings: (section?: "appearance" | "work" | "api-models") => void
+  onSettings: (section?: "appearance" | "profile" | "work" | "api-models") => void
   onDoctor: () => void
   onRecovery?: () => void
   recoveryCount?: number
@@ -351,7 +353,13 @@ export const Sidebar = (props: SidebarProps) => {
   )
   const attention = useMemo(() => pendingNotifications(notifications, messages), [notifications, messages])
   const needsYou = useMemo(() => attention.filter((item) => !isInformationalNotice(item)), [attention])
-  const personName = props.currentPerson?.handle?.trim() || props.currentPerson?.name?.trim() || t("Você")
+  const person = props.currentPerson ?? { id: "owner", avatarSeed: "owner" }
+  const hasProfile = Boolean(props.ownerProfile?.name.trim() || props.ownerProfile?.avatar)
+  const personName =
+    props.ownerProfile?.name.trim() ||
+    props.currentPerson?.handle?.trim() ||
+    props.currentPerson?.name?.trim() ||
+    t("Você")
   const ordered = useSidebarOrder({ ...props, messages, notifications, attention })
   const botsWaitingCount = [...ordered.activity.values()].filter((activity) => activity.kind === "needs-you").length
   const attentionThreadIds = useMemo(
@@ -709,8 +717,16 @@ export const Sidebar = (props: SidebarProps) => {
       </div>
       <div className="sidebar-footer">
         <div className="sidebar-user-row">
-          <button type="button" className="user-chip" onClick={() => navigate(props.onSettings)}>
-            <PersonAvatar person={props.currentPerson ?? { id: "owner", avatarSeed: "owner" }} />
+          <button
+            type="button"
+            className="user-chip"
+            title={t("Profile")}
+            onClick={() => navigate(() => props.onSettings("profile"))}
+          >
+            <PersonAvatar
+              person={{ id: person.id, avatarSeed: person.avatarSeed, name: personName }}
+              avatar={hasProfile ? props.ownerProfile?.avatar : undefined}
+            />
             <span>
               <strong title={personName}>{personName}</strong>
             </span>
