@@ -377,16 +377,11 @@ export const createBotDeletionManager = (
         }
         if (
           ["replay", "messages", "transcript", "attachments"].includes(job.phase) ||
-          job.phase.startsWith("records:")
+          job.phase.startsWith("records:") ||
+          job.phase === "finalize"
         ) {
           await processBatch(botId)
           await new Promise<void>((resolve) => setImmediate(resolve))
-          continue
-        }
-        if (job.phase === "finalize") {
-          const bot = db.query("SELECT id FROM bots WHERE id = ?").get(botId)
-          if (bot) await performDeletionStep("TOURI-E2014", () => deleteBotData(kernel, botId))
-          else updateJob(botId, { phase: "session" })
           continue
         }
         if (job.phase === "session") {
@@ -581,21 +576,6 @@ const deleteBotLogins = async (kernel: Kernel, botId: string) => {
     const result = await kernel.callHost("keychain.delete", { account: providerLoginAccount(botId, provider) })
     if (!result.success) throw new TouriError("TOURI-E1016")
   }
-}
-
-const deleteBotData = async (kernel: Kernel, botId: string): Promise<void> => {
-  const db = kernel.db as Database
-  db.transaction(() => {
-    db.query(
-      "INSERT INTO settings(key,value_json,updated_at) VALUES (?,?,?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at=excluded.updated_at",
-    ).run(`storage.deleted-attachments:${botId}`, "[]", Date.now())
-    db.query("DELETE FROM settings WHERE key IN (?, ?)").run(`approval-grants:${botId}`, `bot-metadata:${botId}`)
-    db.query(
-      "UPDATE bot_deletions SET phase = 'session', cursor = 0, error_code = NULL, updated_at = ? WHERE bot_id = ?",
-    ).run(Date.now(), botId)
-    // Historical dependents have already been purged in committed worker batches.
-    db.query("DELETE FROM bots WHERE id = ?").run(botId)
-  })()
 }
 
 const saveRemovedGroupMembers = (kernel: Kernel, botId: string) => {

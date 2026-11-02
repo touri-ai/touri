@@ -653,13 +653,27 @@ test("deleting a queued ask-all recipient records removal before the surviving m
   const active = await live.send(`@"${history.participant.name}" revise`)
   await until(() => live.signals.has(history.participant.id))
   const activeSignal = live.signals.get(history.participant.id)
+  await live.send(`@"${history.owner.name}" revise`)
+  await until(() => live.signals.has(history.owner.id))
+  const ownerSignal = live.signals.get(history.owner.id)
   const queued = await live.send("Revisem o plano", "ask_all")
+
+  expect(live.persistence.getRun(queued.id)?.status).toBe("queued")
 
   const response = await workspace.request(`/bots/${history.owner.id}`, { name: history.owner.name }, "DELETE")
 
   expect(response.status).toBe(202)
-  expect(live.persistence.getRun(queued.id)?.status).toBe("queued")
+  expect(live.persistence.getRun(queued.id)?.status).toBe("running")
   expect(activeSignal?.aborted).toBe(false)
+  expect(ownerSignal?.aborted).toBe(true)
+  expect(live.signals.get(history.participant.id)).toBe(activeSignal)
+  expect(live.groups.listRuns(history.thread.id).filter((run) => run.groupTurnId === queued.id)).toEqual([])
+  const beforeStart =
+    workspace.runtime.kernel.services.use("store.api")?.activePath({ threadId: history.thread.id }) ?? []
+  expect(beforeStart.some((message) => message.runId === queued.id && message.sender?.id === history.owner.id)).toBe(
+    true,
+  )
+
   live.complete(history.participant.id)
   await until(() => live.persistence.getRun(active.id)?.status === "succeeded")
   await until(() => live.signals.get(history.participant.id) !== activeSignal)
@@ -1315,6 +1329,22 @@ test("finalizing a bot with a large completed run history keeps timer ticks belo
   // Runner preemption can inflate one maximum; a real regression should affect every sample.
   expect(Math.min(...samples.map(({ maxTickMs }) => maxTickMs))).toBeLessThan(150)
 }, 120_000)
+
+test("bot metadata finalization never executes on the live database connection", async () => {
+  const f = await fixture()
+  const bot = await f.create("Worker finalization", "local")
+  const peer = await f.create("Preserved peer", "local")
+  f.db.exec(`CREATE TEMP TRIGGER reject_live_bot_finalization BEFORE DELETE ON main.bots
+    BEGIN SELECT RAISE(ABORT, 'Bot finalization must run outside the live connection'); END`)
+
+  const response = await f.request(`/bots/${bot.id}`, { name: bot.name }, "DELETE")
+
+  expect(response.status).toBe(202)
+  expect(f.db.query("SELECT id FROM bots WHERE id = ?").get(bot.id)).toBeNull()
+  expect(f.db.query("SELECT id FROM bots WHERE id = ?").get(peer.id)).toEqual({ id: peer.id })
+  expect(f.db.query("SELECT bot_id FROM bot_deletions WHERE bot_id = ?").get(bot.id)).toBeNull()
+  expect(f.db.query("PRAGMA foreign_key_check").all()).toEqual([])
+})
 
 test("concurrent bot deletions serialize their worker batches", async () => {
   const f = await fixture()
