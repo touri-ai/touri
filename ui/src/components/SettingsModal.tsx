@@ -192,6 +192,20 @@ export const SettingsModal = ({
             description={t("Seu perfil, as prévias, a ordem dos bots e os atalhos.")}
             defaultOpen={initialSection === "shortcuts" || initialSection === "profile"}
           >
+            {canEditOwnerProfile && (
+              <div className="settings-group">
+                <div className="settings-row-copy owner-profile-heading">
+                  <strong>{t("Profile")}</strong>
+                  <p>{t("Your name and avatar in conversations.")}</p>
+                </div>
+                <OwnerProfileSettings
+                  profile={ownerProfile}
+                  onChange={setOwnerProfile}
+                  focusName={initialSection === "profile"}
+                  onPendingChange={setPreparingOwnerPhoto}
+                />
+              </div>
+            )}
             <SettingsGroup>
               <SettingsRow
                 title={SETTINGS.inlinePreview.label}
@@ -240,18 +254,6 @@ export const SettingsModal = ({
                 <code>{settings?.computerUseHotkey ?? "⌃⌥⌘."}</code>
               </div>
             </div>
-            {canEditOwnerProfile && (
-              <SettingsGroup>
-                <h3>{t("Profile")}</h3>
-                <p className="field-help">{t("Your name and avatar in conversations.")}</p>
-                <OwnerProfileSettings
-                  profile={ownerProfile}
-                  onChange={setOwnerProfile}
-                  focusName={initialSection === "profile"}
-                  onPendingChange={setPreparingOwnerPhoto}
-                />
-              </SettingsGroup>
-            )}
           </SettingsDisclosure>
         </SettingsPane>
         <SettingsPane {...pane("privacy")}>

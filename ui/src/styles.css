@@ -4579,8 +4579,12 @@ button.brand-button:hover:not(:disabled) {
   background: transparent;
 }
 
+.owner-profile-heading {
+  padding: var(--space-20) var(--space-20) 0;
+}
 .owner-profile-settings {
   display: grid;
+  padding: var(--space-20);
   gap: var(--space-12);
   min-width: 0;
 }
