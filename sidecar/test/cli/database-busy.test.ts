@@ -70,6 +70,30 @@ test("the authentication database retains FULL commit durability", () => {
   expect(database.query("PRAGMA synchronous").get()).toEqual({ synchronous: 2 })
 })
 
+test("journal-mode upgrades release their read lock instead of waiting inside the busy handler", () => {
+  const root = mkdtempSync(join(tmpdir(), "touri-auth-upgrade-"))
+  cleanups.push(() => rmSync(root, { recursive: true, force: true }))
+  const filename = prepareDatabaseFile({ root, path: join(root, "auth.db") })
+  const exec = Database.prototype.exec
+  const timeouts = new Set<number>()
+  const intercepted = spyOn(Database.prototype, "exec").mockImplementation(function (this: Database, sql, ...bindings) {
+    if (sql === "PRAGMA journal_mode = WAL") {
+      const row = this.query("PRAGMA busy_timeout").get() as { timeout: number }
+      timeouts.add(row.timeout)
+    }
+
+    return exec.call(this, sql, ...bindings)
+  })
+  cleanups.push(() => intercepted.mockRestore())
+
+  const database = openAuthDatabase(filename)
+  cleanups.push(() => database.close())
+
+  expect(Array.from(timeouts)).toEqual([0])
+  expect(database.query("PRAGMA busy_timeout").get()).toEqual({ timeout: 5000 })
+  expect(database.query("PRAGMA synchronous").get()).toEqual({ synchronous: 2 })
+})
+
 for (const mode of ["exclusive", "reserved"] as const) {
   test(`status waits for the ${mode} startup lock and reads auth counts after it is released`, async () => {
     const { root, database } = await fixture(mode)

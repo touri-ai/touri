@@ -177,7 +177,10 @@ export const openAuthDatabase = (filename: string): Database => {
       )
       for (const statement of ["PRAGMA journal_mode = WAL", "PRAGMA synchronous = FULL", "PRAGMA foreign_keys = ON"]) {
         const remainingMs = Math.max(1, Math.ceil(deadline - performance.now()))
-        database.exec(`PRAGMA busy_timeout = ${remainingMs}`)
+        // A journal upgrade can hold a read lock that prevents the current writer from committing.
+        // Retry with a closed connection instead of waiting inside SQLite with that lock held.
+        const timeoutMs = statement === "PRAGMA journal_mode = WAL" ? 0 : remainingMs
+        database.exec(`PRAGMA busy_timeout = ${timeoutMs}`)
         database.exec(statement)
       }
       if (!hasAuthSchema(database)) {
