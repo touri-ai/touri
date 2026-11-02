@@ -7,21 +7,18 @@ import { createMockApi } from "../src/api/mock"
 import { ToolCallCard } from "../src/components/ToolCallCard"
 import { DoctorStorage } from "../src/features/doctor/DoctorStorage"
 
-const cleanups = new Set<() => void>()
-const mockBrowserBlob = () => {
+const getBrowserBlobMock = () => ({
   // The DOM fixture lacks Blob.arrayBuffer(), which the browser thumbnail loader uses.
-  vi.stubGlobal("Blob", NodeBlob)
-  return () => vi.unstubAllGlobals()
-}
-beforeEach(() => {
-  cleanups.add(mockBrowserBlob())
+  install: () => {
+    vi.stubGlobal("Blob", NodeBlob)
+  },
+  restore: () => vi.unstubAllGlobals(),
 })
+const browserBlob = getBrowserBlobMock()
+beforeEach(browserBlob.install)
 afterEach(() => {
   cleanup()
-  cleanups.forEach((restore) => {
-    restore()
-  })
-  cleanups.clear()
+  browserBlob.restore()
   vi.useRealTimers()
 })
 const part: ToolCallPart = {
