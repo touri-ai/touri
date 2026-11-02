@@ -343,13 +343,15 @@ test("customized legacy group heads keep their look and seed through validation 
   expect(reopened?.color).toBe(groupFixture.group.color)
 })
 
-test("groups have separate conversations, private member sessions, ordered replies and durable attribution", async () => {
+test("groups have separate conversations, private member sessions, complete replies and durable attribution", async () => {
   const f = await fixture()
   const run = f.send("Bom dia")
   await until(() => f.persistence.getRun(run.id)?.status === "succeeded")
-  expect(f.order).toEqual(f.group.memberIds)
+  expect(f.order).toHaveLength(f.group.memberIds.length)
+  expect(new Set(f.order)).toEqual(new Set(f.group.memberIds))
   const replies = f.store.activePath({ threadId: f.thread.id }).filter((m) => m.role === "assistant")
-  expect(replies.map((m) => m.sender?.name)).toEqual(["pm", "dev", "qa"])
+  expect(replies).toHaveLength(3)
+  expect(new Set(replies.map((message) => message.sender?.name))).toEqual(new Set(["pm", "dev", "qa"]))
   expect(new Set(f.runtime.listRuns(f.thread.id).map((r) => r.botId)).size).toBe(3)
   const children = f.db.query("SELECT * FROM threads WHERE group_thread_id=?").all(f.thread.id) as {
     id: string
@@ -768,7 +770,9 @@ test("three addressed bots run independently and a future reference never reserv
 
   expect(scenario.persistence.getRun(first.id)?.status).toBe("running")
   expect(scenario.persistence.getRun(ownNext.id)?.status).toBe("queued")
-  expect(scenario.order).toEqual(scenario.group.memberIds)
+  expect(scenario.order[0]).toBe(scenario.bots[0]?.id)
+  expect(scenario.order).toHaveLength(scenario.group.memberIds.length)
+  expect(new Set(scenario.order)).toEqual(new Set(scenario.group.memberIds))
   release.resolve()
   await until(() => scenario.persistence.getRun(ownNext.id)?.status === "succeeded")
 })
@@ -2327,41 +2331,71 @@ test("a waiting group routine keeps its original timeout after restart", async (
   expect(members[0]).toMatchObject({ status: "failed", errorClass: "timeout" })
 })
 
-test("a group routine posts its prompt into the group conversation and finishes with every member's reply", async () => {
-  const f = await fixture()
-  const engine = routineEngine(f)
-  const created = engine.createRoutine({ input: groupRoutine(f), forceDisabled: false })
-  if (!created.success) throw new Error(created.error)
-  const started = engine.runRoutine({ routineId: created.routine.id, triggerSource: "manual" })
-  if (!started.success) throw new Error(started.error)
-  expect(started.routineRun.threadId).toBe(f.thread.id)
-  await until(() => engine.listRoutineRuns(created.routine.id)[0]?.status === "succeeded")
-  expect(f.order).toEqual(f.group.memberIds)
-  const shared = f.store.activePath({ threadId: f.thread.id })
-  expect(shared[0]).toMatchObject({ role: "user", text: "Verifiquem os e-mails de hoje", sender: { name: "routine" } })
-  expect(shared.filter((m) => m.role === "assistant").map((m) => m.sender?.name)).toEqual(["pm", "dev", "qa"])
-  const finished = engine.listRoutineRuns(created.routine.id)[0]
-  const aggregate = f.persistence.getRun(finished?.runId ?? "")
-  if (!aggregate) throw new Error("Missing group routine run")
-  const linked = f.db.query("SELECT run_id FROM group_run_links WHERE turn_id = ?").all(aggregate.id) as Array<{
-    run_id: string
-  }>
-  const children = linked.flatMap(({ run_id }) => {
-    const run = f.persistence.getRun(run_id)
-    return run ? [{ stored: run, snapshot: engine.getRunSnapshot(run) }] : []
-  })
+test.each([0, 1, 2])(
+  "a group routine retains every member reply when member %i finishes last",
+  async (delayedIndex) => {
+    const release = Promise.withResolvers<void>()
+    const completed = new Set<string>()
+    const memberNames = new Map<string, string>()
+    let delayedBotId: string | undefined
+    const groupFixture = await fixture(async (ctx, complete) => {
+      if (ctx.botId === delayedBotId) await release.promise
+      complete(`${memberNames.get(ctx.botId)} respondeu`)
+      completed.add(ctx.botId)
+      if (completed.size === 2) release.resolve()
+    })
+    groupFixture.bots.forEach(({ id, name }) => {
+      memberNames.set(id, name)
+    })
+    delayedBotId = groupFixture.bots[delayedIndex]?.id
+    if (!delayedBotId) throw new Error("Missing delayed member")
+    const engine = routineEngine(groupFixture)
+    const created = engine.createRoutine({ input: groupRoutine(groupFixture), forceDisabled: false })
+    if (!created.success) throw new Error(created.error)
 
-  expect(engine.getRunSnapshot(aggregate)).toMatchObject({ threadId: f.thread.id, groupThreadId: null })
-  expect(children).toHaveLength(3)
-  expect(
-    children.every(
-      ({ stored, snapshot }) => snapshot.threadId === stored.threadId && snapshot.groupThreadId === f.thread.id,
-    ),
-  ).toBe(true)
-  expect(finished?.summary).toContain("pm: pm respondeu")
-  expect(finished?.summary).toContain("qa: qa respondeu")
-  expect(f.persistence.getRun(finished?.runId ?? "")?.routineRunId).toBe(finished?.id ?? "")
-})
+    const started = engine.runRoutine({ routineId: created.routine.id, triggerSource: "manual" })
+    if (!started.success) throw new Error(started.error)
+    await until(() => engine.listRoutineRuns(created.routine.id)[0]?.status === "succeeded")
+
+    expect(started.routineRun.threadId).toBe(groupFixture.thread.id)
+    expect(groupFixture.order).toHaveLength(groupFixture.group.memberIds.length)
+    expect(new Set(groupFixture.order)).toEqual(new Set(groupFixture.group.memberIds))
+    const shared = groupFixture.store.activePath({ threadId: groupFixture.thread.id })
+    const replies = shared.filter((message) => message.role === "assistant")
+    expect(shared[0]).toMatchObject({
+      role: "user",
+      text: "Verifiquem os e-mails de hoje",
+      sender: { name: "routine" },
+    })
+    expect(replies).toHaveLength(3)
+    expect(new Set(replies.map((message) => message.sender?.name))).toEqual(new Set(["pm", "dev", "qa"]))
+    expect(replies.at(-1)?.sender?.id).toBe(delayedBotId)
+    const finished = engine.listRoutineRuns(created.routine.id)[0]
+    const aggregate = groupFixture.persistence.getRun(finished?.runId ?? "")
+    if (!aggregate) throw new Error("Missing group routine run")
+    const linked = groupFixture.db
+      .query("SELECT run_id FROM group_run_links WHERE turn_id = ?")
+      .all(aggregate.id) as Array<{
+      run_id: string
+    }>
+    const children = linked.flatMap(({ run_id }) => {
+      const run = groupFixture.persistence.getRun(run_id)
+      return run ? [{ stored: run, snapshot: engine.getRunSnapshot(run) }] : []
+    })
+
+    expect(engine.getRunSnapshot(aggregate)).toMatchObject({ threadId: groupFixture.thread.id, groupThreadId: null })
+    expect(children).toHaveLength(3)
+    expect(
+      children.every(
+        ({ stored, snapshot }) =>
+          snapshot.threadId === stored.threadId && snapshot.groupThreadId === groupFixture.thread.id,
+      ),
+    ).toBe(true)
+    expect(finished?.summary).toContain("pm: pm respondeu")
+    expect(finished?.summary).toContain("qa: qa respondeu")
+    expect(groupFixture.persistence.getRun(finished?.runId ?? "")?.routineRunId).toBe(finished?.id ?? "")
+  },
+)
 
 test("a group routine follows the coordinator and reuses its conversation in main mode", async () => {
   const f = await fixture()
@@ -2759,7 +2793,9 @@ test("ask_all remains hidden outside groups and asks for explicit consent even f
   await until(() => scenario.persistence.getRun(turn.id)?.status === "succeeded")
 
   expect(cards.has("ask_all")).toBe(true)
-  expect(scenario.order).toEqual(scenario.group.memberIds)
+  expect(scenario.order[0]).toBe(scenario.bots[0]?.id)
+  expect(scenario.order).toHaveLength(scenario.group.memberIds.length)
+  expect(new Set(scenario.order)).toEqual(new Set(scenario.group.memberIds))
 })
 
 test("a failed coordinator cancels parallel peers instead of leaving them without a stoppable turn", async () => {
@@ -2807,7 +2843,8 @@ test("ordinary mentions keep a fresh per-bot budget across a long group turn", a
   const turn = scenario.send("@pm @dev revisem")
   await until(() => scenario.persistence.getRun(turn.id)?.status === "succeeded")
 
-  expect(scenario.order).toEqual(scenario.group.memberIds.slice(0, 2))
+  expect(scenario.order).toHaveLength(2)
+  expect(new Set(scenario.order)).toEqual(new Set(scenario.group.memberIds.slice(0, 2)))
   expect(scenario.runtime.listRuns(scenario.thread.id).filter((run) => run.groupTurnId === turn.id)).toHaveLength(2)
 })
 
@@ -2827,7 +2864,11 @@ test("ask_bot keeps its own budget after an earlier member used most of the turn
   expect(await answer.promise).toMatchObject({ success: true })
   await until(() => scenario.persistence.getRun(turn.id)?.status === "succeeded")
 
-  expect(scenario.order).toEqual(scenario.group.memberIds)
+  expect(scenario.order.indexOf(scenario.bots[1]?.id ?? "")).toBeLessThan(
+    scenario.order.indexOf(scenario.bots[2]?.id ?? ""),
+  )
+  expect(scenario.order).toHaveLength(scenario.group.memberIds.length)
+  expect(new Set(scenario.order)).toEqual(new Set(scenario.group.memberIds))
 })
 
 const sendAskAll = async (scenario: Awaited<ReturnType<typeof fixture>>) => {
@@ -3144,7 +3185,15 @@ test("channel addresses call exactly the named members in prefix order and ignor
   const sent = await postChannelMessage(scenario, "@qa @dev @qa oi")
   await until(() => Boolean(sent.run && scenario.persistence.getRun(sent.run.id)?.status === "succeeded"))
 
-  expect(scenario.order).toEqual([scenario.bots[2]?.id ?? "", scenario.bots[1]?.id ?? ""])
+  const recipients = [scenario.bots[2]?.id ?? "", scenario.bots[1]?.id ?? ""]
+  const turn = scenario.db
+    .query("SELECT recipients_json FROM group_turns WHERE run_id = ?")
+    .get(sent.run?.id ?? "") as {
+    recipients_json: string
+  } | null
+  expect(JSON.parse(turn?.recipients_json ?? "null")).toEqual(recipients)
+  expect(scenario.order).toHaveLength(recipients.length)
+  expect(new Set(scenario.order)).toEqual(new Set(recipients))
   const plain = await postChannelMessage(scenario, "obrigado")
   expect(plain.run).toBeNull()
   expect(scenario.order).toHaveLength(2)
