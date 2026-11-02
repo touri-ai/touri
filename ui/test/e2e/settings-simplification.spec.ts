@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright"
 import { expect, test } from "@playwright/test"
-import { openGlobalPage, showBotAdvanced } from "./home-navigation"
+import { openAppearanceSettings, openGlobalPage, showBotAdvanced } from "./home-navigation"
 
 test.use({ viewport: { width: 1440, height: 900 }, reducedMotion: "reduce" })
 
@@ -72,7 +72,7 @@ test("native preferences list the core tabs and advanced server settings", async
 
 test("app preferences disclose technical controls and preserve edits between sections", async ({ page }) => {
   await page.goto("/test/e2e/r8-settings-harness.html")
-  await page.getByRole("button", { name: "Você", exact: true }).click()
+  await openAppearanceSettings(page)
   const dialog = page.getByRole("dialog")
   await expect(dialog.getByRole("tab")).toHaveText(nativePreferencesTabs)
   await expect(dialog.getByRole("switch")).toHaveCount(0)
@@ -105,7 +105,7 @@ test("app preferences disclose technical controls and preserve edits between sec
   ).not.toBeChecked()
   await dialog.getByRole("button", { name: "Salvar preferências", exact: true }).click()
   await expect(dialog).toHaveCount(0)
-  await page.getByRole("button", { name: "Você", exact: true }).click()
+  await openAppearanceSettings(page)
   await dialog.getByText("Chat, perfil e atalhos", { exact: true }).click()
   await expect(
     dialog.getByRole("switch", { name: "Mover bots com novidades para o topo", exact: true }),

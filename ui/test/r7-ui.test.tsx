@@ -132,7 +132,10 @@ it("uses a pt-BR preferences title and separate labels for the shortcut and brow
   fireEvent.click(screen.getByRole("button", { name: "Você", exact: true }))
   const settings = await screen.findByRole("dialog", { name: "Configurações" })
   expect(within(settings).getByText("preferências locais")).toBeVisible()
-  fireEvent.click(within(settings).getByText("Chat, perfil e atalhos"))
+  expect(within(settings).getByRole("button", { name: /^Chat, perfil e atalhos/ })).toHaveAttribute(
+    "aria-expanded",
+    "true",
+  )
   const shortcut = within(settings).getByText("Atalho para controle do computador:")
   expect(shortcut).toBeVisible()
   fireEvent.click(within(settings).getByRole("tab", { name: "Privacidade" }))

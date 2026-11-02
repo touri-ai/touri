@@ -134,3 +134,9 @@ export const openMessageActions = async (page: Page): Promise<void> => {
   await trigger.focus()
   await trigger.click()
 }
+
+export const openAppearanceSettings = async (page: Page): Promise<void> => {
+  await page.keyboard.press("Control+k")
+  await page.getByRole("combobox").fill("Aparência")
+  await page.locator('[data-palette-item="settings:app-section:appearance"]').click()
+}

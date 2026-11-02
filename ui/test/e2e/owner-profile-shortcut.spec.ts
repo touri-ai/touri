@@ -26,7 +26,7 @@ for (const width of [1440, 390])
       await chip.focus()
       await page.keyboard.press("Enter")
 
-      const profile = page.getByRole("button", { name: /^Perfil/ })
+      const profile = page.getByRole("button", { name: /^Chat, perfil e atalhos/ })
       await expect(profile).toHaveAttribute("aria-expanded", before ? "false" : "true")
       await expect(page.getByRole("dialog").getByRole("tab")).toHaveCount(5)
       if (!before) {

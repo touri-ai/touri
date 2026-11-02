@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright"
 import { expect, type Page, test } from "@playwright/test"
+import { openAppearanceSettings } from "./home-navigation"
 
 test.setTimeout(60_000)
 test.use({ reducedMotion: "reduce" })
@@ -43,8 +44,7 @@ for (const width of [1440, 390])
         })
       if (evidence) {
         await navigation(page, width)
-        await page.locator(".user-chip").click()
-        await page.getByRole("tab", { name: "Aparência", exact: true }).click()
+        await openAppearanceSettings(page)
         await page.screenshot({
           animations: "disabled",
           path: `${evidence}/${before ? "before" : "after"}-preferences-${width}-${theme}.png`,

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test"
-import { openGlobalPage, showBotDetails } from "./home-navigation"
+import { openAppearanceSettings, openGlobalPage, showBotDetails } from "./home-navigation"
 
 test.use({ channel: "chromium", viewport: { width: 1440, height: 900 } })
 test.beforeEach(async ({ page }) => {
@@ -52,7 +52,7 @@ test("bot MCP settings keep the name and close button visible after scrolling", 
 })
 
 test("preferences visually separate shortcut and browser labels from their values", async ({ page }) => {
-  await page.getByRole("button", { name: "Você", exact: true }).click()
+  await openAppearanceSettings(page)
   const settings = page.getByRole("dialog", { name: "Configurações" })
   await expect(settings.getByText("preferências locais", { exact: true })).toBeVisible()
   for (const [section, disclosure] of [
