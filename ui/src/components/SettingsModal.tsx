@@ -104,10 +104,11 @@ export const SettingsModal = ({
   const [resumeTurns, setResumeTurns] = useState(settings?.resumeInterruptedTurns ?? true)
   const [vmMemory, setVmMemory] = useState(settings?.botVmMemoryMb ?? 1536)
   const [retentionDays, setRetentionDays] = useState(settings?.dataRetentionDays ?? 30)
+  const [preparingOwnerPhoto, setPreparingOwnerPhoto] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const save = async (): Promise<void> => {
-    if (saving) return
+    if (saving || preparingOwnerPhoto) return
     if (!Number.isInteger(retentionDays) || retentionDays < 0 || retentionDays > 3650) {
       setError(t("Escolha de 0 a 3.650 dias para guardar os detalhes."))
       setSection("privacy")
@@ -250,6 +251,7 @@ export const SettingsModal = ({
                 profile={ownerProfile}
                 onChange={setOwnerProfile}
                 focusName={initialSection === "profile"}
+                onPendingChange={setPreparingOwnerPhoto}
               />
             </SettingsDisclosure>
           )}
@@ -508,7 +510,12 @@ export const SettingsModal = ({
           <button type="button" className="button button-quiet" onClick={onClose}>
             {t("Cancel")}
           </button>
-          <button type="button" className="button button-brand" disabled={saving} onClick={() => void save()}>
+          <button
+            type="button"
+            className="button button-brand"
+            disabled={saving || preparingOwnerPhoto}
+            onClick={() => void save()}
+          >
             {saving ? t("Saving…") : t("Save preferences")}
           </button>
         </div>
