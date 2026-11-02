@@ -9,7 +9,8 @@ import { createServerModeFixture } from "./server-mode-fixture"
 type ImportServer = Awaited<ReturnType<typeof createServerModeFixture>>
 const test = base.extend<{ server: ImportServer; source: string }>({
   // biome-ignore lint/correctness/noEmptyPattern: The isolated server fixture has no dependencies.
-  server: async ({}, use) => use(await createServerModeFixture()),
+  server: async ({}, use) =>
+    use(await createServerModeFixture({ port: Number(process.env.TOURI_IMPORT_TEST_PORT ?? 0) })),
   // biome-ignore lint/correctness/noEmptyPattern: The archive fixture has no dependencies.
   source: async ({}, use) => {
     const source = await mkdtemp(join(tmpdir(), "touri-legacy-source-"))
@@ -82,10 +83,30 @@ for (const width of [1440, 390]) {
       await page.getByRole("button", { name: "Revisar importação", exact: true }).click()
       await page.getByRole("button", { name: "Simular importação", exact: true }).click()
       await expect(page.locator(".review-grid")).toContainText("Todos do arquivo (3)")
+      await page.screenshot({
+        path: getScreenshotPath(`${width}-${theme}-dry-run.png`, info),
+        animations: "disabled",
+      })
       await page.getByRole("button", { name: "Importar agora", exact: true }).click()
       await expect(page.locator(".import-current-card")).toContainText("Tudo já estava atualizado")
       await expect(page.locator(".import-current-card")).toContainText("11 mensagens e 5 conversas")
       await expect(page.locator(".success-card")).toHaveCount(0)
+      await expect(page.locator(".import-report")).toContainText("Já no touri")
+      await expect(page.locator(".import-report-grid dd")).toHaveText(["3", "5", "11", "2"])
+
+      const iconOffset = await page.locator(".import-current-card").evaluate((card) => {
+        const icon = card.querySelector("svg")
+        const title = card.querySelector("strong")
+        if (!icon || !title) throw new Error("Missing unchanged import status")
+
+        return Math.abs(icon.getBoundingClientRect().top - title.getBoundingClientRect().top)
+      })
+
+      expect(iconOffset).toBeLessThanOrEqual(6)
+      expect((await new AxeBuilder({ page }).include(".modal-card").analyze()).violations).toEqual([])
+      expect(await page.locator(".modal-card").evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(
+        false,
+      )
       await page.screenshot({
         path: getScreenshotPath(`${width}-${theme}-unchanged.png`, info),
         animations: "disabled",
@@ -135,5 +156,6 @@ for (const width of [1440, 390]) {
 
 const getScreenshotPath = (name: string, info: TestInfo) => {
   const evidence = process.env.TOURI_IMPORT_EVIDENCE_DIR
+
   return evidence ? join(evidence, name) : info.outputPath(name)
 }

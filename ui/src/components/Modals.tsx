@@ -323,7 +323,7 @@ export const ImportWizard = ({ api, onClose, onNotice }: ImportWizardProps) => {
           <div className="wizard-content">
             <h3>{t("Import finished")}</h3>
             <div className={isAlreadyUpdated ? "import-current-card" : "success-card"}>
-              <span aria-hidden="true">{isAlreadyUpdated ? "=" : "✓"}</span>
+              <span aria-hidden="true">{isAlreadyUpdated ? <PanelIcon name="check" /> : "✓"}</span>
               <div>
                 <strong>{t(isAlreadyUpdated ? "Everything was already up to date" : "History is in touri")}</strong>
                 <p>
@@ -336,7 +336,7 @@ export const ImportWizard = ({ api, onClose, onNotice }: ImportWizardProps) => {
                 </p>
               </div>
             </div>
-            <ImportReportView report={report} showWarnings={!error} />
+            <ImportReportView report={report} showWarnings={!error} showUnchanged={isAlreadyUpdated} />
           </div>
         )}
         {step === 4 && (
@@ -490,29 +490,31 @@ const getImportWarning = (warning: string): string | null => {
 const ImportReportView = ({
   report,
   showWarnings = true,
+  showUnchanged = false,
 }: {
+  showUnchanged?: boolean
   showWarnings?: boolean
   report: ApiRoutes["GET /imports/:id"]["res"]["report"]
 }) =>
   report ? (
     <div className="import-report">
-      <strong>{t("Report")}</strong>
+      <strong>{t(showUnchanged ? "Already in touri" : "Report")}</strong>
       <dl className="import-report-grid">
         <div>
           <dt>{t("Bots")}</dt>
-          <dd>{report.bots.created}</dd>
+          <dd>{showUnchanged ? report.bots.unchanged : report.bots.created}</dd>
         </div>
         <div>
           <dt>{t("Conversations")}</dt>
-          <dd>{report.threads.created}</dd>
+          <dd>{showUnchanged ? report.threads.unchanged : report.threads.created}</dd>
         </div>
         <div>
           <dt>{t("Messages")}</dt>
-          <dd>{report.messages.created}</dd>
+          <dd>{showUnchanged ? report.messages.unchanged : report.messages.created}</dd>
         </div>
         <div>
           <dt>{t("Routines")}</dt>
-          <dd>{report.routines.created}</dd>
+          <dd>{showUnchanged ? report.routines.unchanged : report.routines.created}</dd>
         </div>
       </dl>
       {showWarnings && getImportWarnings(report.warnings).map((warning) => <p key={warning}>⚠ {warning}</p>)}

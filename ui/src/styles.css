@@ -4637,12 +4637,19 @@ button.brand-button:hover:not(:disabled) {
 
 .import-current-card {
   display: flex;
+  align-items: flex-start;
   gap: var(--space-8);
   margin: var(--space-16) 0;
   padding: var(--space-20);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--surface);
+}
+.import-current-card > span {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  min-height: var(--fs-title);
 }
 .import-current-card strong {
   font-size: var(--fs-title);

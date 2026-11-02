@@ -108,10 +108,25 @@ it.each([{ warnings: [] }, { warnings: ["An optional attachment is unavailable."
 
     expect(screen.getByText(t("Everything was already up to date"))).toBeVisible()
     expect(screen.getByText(t("Unchanged import counts", { messages: 23, threads: 4 }))).toBeVisible()
+    expect(within(getReportView(true)).getByText(t("Already in touri"))).toBeVisible()
+    expect(
+      within(getReportView(true))
+        .getAllByRole("definition")
+        .map((count) => count.textContent),
+    ).toEqual(["1", "4", "23", "0"])
     expect(document.querySelector(".success-card")).toBeNull()
     expect(screen.queryByRole("alert")).toBeNull()
   },
 )
+
+it.each([
+  ["pt-BR", 1, 1, "1 mensagem e 1 conversa já estavam no touri. Nenhuma alteração necessária."],
+  ["en", 1, 1, "1 message and 1 conversation were already in touri. No changes needed."],
+  ["pt-BR", 0, 2, "0 mensagens e 2 conversas já estavam no touri. Nenhuma alteração necessária."],
+  ["en", 2, 0, "2 messages and 0 conversations were already in touri. No changes needed."],
+] as const)("pluralizes unchanged totals in %s (%s messages, %s conversations)", (locale, messages, threads, text) => {
+  expect(t("Unchanged import counts", { messages, threads }, locale)).toBe(text)
+})
 
 it.each([
   [
@@ -529,8 +544,8 @@ const getReport = ({ importId = "import-one", dryRun = false, warnings = [] as s
   warnings,
 })
 
-const getReportView = (): HTMLElement => {
-  const report = screen.getByText(t("Report")).parentElement
+const getReportView = (unchanged = false): HTMLElement => {
+  const report = screen.getByText(t(unchanged ? "Already in touri" : "Report")).parentElement
   if (!report) throw new Error("Missing import report")
 
   return report
