@@ -255,7 +255,9 @@ test("a completed recipient does not block while another member keeps its coordi
     "INSERT INTO group_run_links VALUES ('finished-builder', 'coordinator', 0), ('busy-designer', 'coordinator', 0)",
   ).run()
 
-  expect(db.query(sql).all(20)).toMatchObject([{ blocker_run_id: null }])
+  const rows = db.query(sql).all(20)
+
+  expect(rows).toMatchObject([{ blocker_run_id: null }])
 })
 
 test("a live member in another channel still owns the same bot slot", () => {
@@ -267,5 +269,36 @@ test("a live member in another channel still owns the same bot slot", () => {
   db.query("INSERT INTO group_run_links VALUES ('busy-builder', 'coordinator', 0)").run()
   saveReplyProgress(db, "busy-builder", 100)
 
-  expect(db.query(sql).all(20)).toMatchObject([{ blocker_run_id: "coordinator", blocker_last_progress_at: 100 }])
+  const rows = db.query(sql).all(20)
+
+  expect(rows).toMatchObject([{ blocker_run_id: "coordinator", blocker_last_progress_at: 100 }])
+})
+
+test("a queued member in another channel reserves its bot without implying progress", () => {
+  const db = getFixture()
+  addChannel(db, "waiting")
+  addRun(db, "coordinator", "designer")
+  addChannel(db, "coordinator", "other-channel", ["designer"])
+  addRun(db, "queued-builder", "builder", "queued", "builder-thread")
+  db.query("INSERT INTO group_run_links VALUES ('queued-builder', 'coordinator', 1)").run()
+  saveReplyProgress(db, "queued-builder", 100)
+
+  const rows = db.query(sql).all(20)
+
+  expect(rows).toContainEqual(
+    expect.objectContaining({ run_id: "waiting", blocker_run_id: "coordinator", blocker_last_progress_at: null }),
+  )
+})
+
+test("persisted members disable recipient fallback even when the requested bot never started", () => {
+  const db = getFixture()
+  addChannel(db, "waiting")
+  addRun(db, "coordinator", "designer")
+  addChannel(db, "coordinator", "channel", ["designer", "builder"])
+  addRun(db, "busy-designer", "designer", "running", "designer-thread")
+  db.query("INSERT INTO group_run_links VALUES ('busy-designer', 'coordinator', 0)").run()
+
+  const rows = db.query(sql).all(20)
+
+  expect(rows).toMatchObject([{ blocker_run_id: null, blocker_last_progress_at: null }])
 })
