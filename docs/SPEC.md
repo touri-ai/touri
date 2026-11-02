@@ -254,6 +254,10 @@ replaying the same batch's journal. Pending earlier journal entries are material
 validation; projections, search, journal entries and retry acknowledgements commit atomically.
 A delta that omits its part type preserves an existing reasoning part and its metadata, keeping
 reasoning content out of response text and response search.
+Appended part indices in one stream batch may arrive in any order when their distinct indices
+form a contiguous range from the current message length. Existing parts may be updated in the
+same batch. Invalid indices and gaps reject the entire batch before changing the cached projection
+or preparing output attachments; persisted history retains the parts in index order.
 
 Terminal output preparation owns its attachment files until the winning terminal transaction
 settles, including cancellation during a failed turn. Orphan collection on the same database
