@@ -441,21 +441,21 @@ test("two provider frames cannot overfill the per-message byte budget", async ()
 })
 
 test("accepts contiguous part patches when a later index arrives first", async () => {
-  const f = await fixture()
-  cleanups.add(f.close)
+  const stream = await fixture()
+  cleanups.add(stream.close)
 
   const existingParts = Array.from({ length: 21 }, (_, index) => ({
     type: "reasoning" as const,
     text: `Parte ${index}`,
   }))
-  const updated = f.store.updateMessage({
+  const updated = stream.store.updateMessage({
     threadId: "t",
     messageId: "a",
     patch: { parts: existingParts },
   })
   expect(updated.success).toBe(true)
 
-  f.store.appendParts?.({
+  stream.store.appendParts?.({
     threadId: "t",
     messageId: "a",
     parts: [
@@ -463,13 +463,47 @@ test("accepts contiguous part patches when a later index arrives first", async (
       { partIndex: 21, part: { type: "text", text: "Parte intermediária" } },
     ],
   })
-  await f.store.flushWritesAsync?.()
+  await stream.store.flushWritesAsync?.()
+  materializeTranscript(stream.database)
 
-  const message = f.store.activePath({ threadId: "t", leafId: "a" })[0]
+  const message = stream.store.activePath({ threadId: "t", leafId: "a" })[0]
   expect(message?.parts.slice(21)).toEqual([
     { type: "text", text: "Parte intermediária" },
     { type: "reasoning", text: "Última parte" },
   ])
+  const persisted = stream.database.query("SELECT text, parts_json FROM messages WHERE id = 'a'").get() as {
+    text: string
+    parts_json: string
+  }
+  expect(persisted.text).toBe("Parte intermediária")
+  expect(JSON.parse(persisted.parts_json)).toEqual(message?.parts)
+})
+
+test.each([
+  { indices: [2] },
+  { indices: [3, 1] },
+  { indices: [2, 2] },
+  { indices: [-1, 1] },
+  { indices: [1.5, 1] },
+  { indices: [Number.NaN, 1] },
+  { indices: [Number.POSITIVE_INFINITY, 1] },
+])("rejects invalid or noncontiguous stream part indices %j without changing the projection", async ({ indices }) => {
+  const stream = await fixture()
+  cleanups.add(stream.close)
+  const parts = indices.map((partIndex) => ({ partIndex, part: { type: "text" as const, text: "Descartar" } }))
+
+  expect(() => stream.store.appendParts?.({ threadId: "t", messageId: "a", parts })).toThrow(
+    "Invalid stream part index",
+  )
+  stream.store.appendDelta({ threadId: "t", messageId: "a", partIndex: 0, delta: "Preservar" })
+  await stream.store.flushWritesAsync?.()
+  materializeTranscript(stream.database)
+
+  expect(stream.database.query("SELECT text, parts_json FROM messages WHERE id = 'a'").get()).toEqual({
+    text: "Preservar",
+    parts_json: JSON.stringify([{ type: "text", text: "Preservar" }]),
+  })
+  expect(stream.events.filter(({ event }) => event.type === "message.parts")).toHaveLength(0)
 })
 
 test("an invalid patch list leaves the cached projection unchanged", async () => {
