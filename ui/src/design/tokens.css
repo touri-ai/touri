@@ -129,7 +129,8 @@
   --bubble-padding-block: var(--space-12);
   --bubble-padding-inline: var(--space-12);
   --bubble-max-width: 560px;
-  --chat-column-width: 720px;
+  /* Chat reads like Discord: messages and composer span the pane, anchored left. */
+  --chat-column-width: 100%;
 }
 
 /* Layer 2: components consume roles; themes only remap those roles. */

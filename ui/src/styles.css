@@ -703,7 +703,7 @@ a {
 .message-bubble,
 .day-divider,
 .run-card-stack {
-  width: min(680px, 100%);
+  width: min(var(--chat-column-width), 100%);
   margin-right: auto;
   margin-left: auto;
 }
@@ -719,7 +719,7 @@ a {
 .message-user {
   width: fit-content;
   max-width: 78%;
-  margin-right: max(0px, calc((100% - 680px) / 2));
+  margin-right: max(0px, calc((100% - var(--chat-column-width)) / 2));
   margin-left: auto;
   padding: var(--space-8) var(--space-12);
   border-radius: var(--radius-lg);
@@ -727,7 +727,7 @@ a {
 }
 .message-other-person {
   margin-right: auto;
-  margin-left: max(0px, calc((100% - 680px) / 2));
+  margin-left: max(0px, calc((100% - var(--chat-column-width)) / 2));
   background: var(--surface-control);
 }
 .message-assistant {
@@ -958,7 +958,7 @@ a {
   display: flex;
   align-items: center;
   gap: var(--space-8);
-  width: min(680px, 100%);
+  width: min(var(--chat-column-width), 100%);
   margin: var(--space-4) auto var(--space-12);
   color: var(--text-2);
   font-size: var(--fs-caption);
