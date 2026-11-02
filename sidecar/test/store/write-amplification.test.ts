@@ -1,14 +1,23 @@
-import type { Database } from "bun:sqlite"
-import { expect, test } from "bun:test"
+import { Database } from "bun:sqlite"
+import { afterEach, expect, test } from "bun:test"
 import { closeSync, mkdtempSync, openSync, readSync, rmSync, statSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { CommandPart, MessagePart, Run, StoreApi } from "@touri/contracts"
 import { createKernel } from "../../src/kernel"
+import { writeDatabaseAsync } from "../../src/kernel/database-write"
 import { profileProviders } from "../../src/kernel/provider-profiles"
 import { createRuntimePersistence } from "../../src/runtime/persistence"
 import { createToolResolutions } from "../../src/runtime/tool-resolutions"
 import { init as initStore } from "../../src/store"
+
+const cleanups = new Set<() => void>()
+afterEach(() => {
+  cleanups.forEach((cleanup) => {
+    cleanup()
+  })
+  cleanups.clear()
+})
 
 type BatchedStore = StoreApi & {
   appendParts?: (input: {
@@ -181,18 +190,20 @@ test("long agentic turns bound durable commits, row mutations and physical WAL b
     // snapshot could conceal a writer that silently dropped accepted work.
     expect(streamed.join("")).toBe(delta.repeat(2_000))
     if (batched) expect(publishedProgress).toBe(300)
-    database.transaction(() => {
-      const complete: Run = { ...run, status: "succeeded", finishedAt: Date.now() }
-      command = record(complete, { ...command, exitCode: 0, resolution: "succeeded" })
-      expect(
-        store.updateMessage({
-          threadId: "t",
-          messageId: "reply",
-          patch: { text, parts: [{ type: "text", text }, command], status: "complete" },
-        }).success,
-      ).toBe(true)
-      persistence.saveRun(complete)
-    })()
+    await withCompetingWriter(database, () =>
+      writeDatabaseAsync(database, () => {
+        const complete: Run = Object.assign({}, run, { status: "succeeded", finishedAt: Date.now() })
+        command = record(complete, Object.assign({}, command, { exitCode: 0, resolution: "succeeded" }))
+        expect(
+          store.updateMessage({
+            threadId: "t",
+            messageId: "reply",
+            patch: { text, parts: [{ type: "text", text }, command], status: "complete" },
+          }).success,
+        ).toBe(true)
+        persistence.saveRun(complete)
+      }),
+    )
     await Bun.sleep(0)
     const elapsedMs = Math.round(performance.now() - started)
     const wal = walMetrics(join(root, "touri.db-wal"))
@@ -225,3 +236,12 @@ test("long agentic turns bound durable commits, row mutations and physical WAL b
     rmSync(root, { recursive: true, force: true })
   }
 }, 30_000)
+
+const withCompetingWriter = async (database: Database, finish: () => Promise<void>): Promise<void> => {
+  const writer = new Database(database.filename)
+  cleanups.add(() => writer.close())
+  // Start finalization while this connection owns the writer, then commit before awaiting it.
+  const finalization = await writeDatabaseAsync(writer, () => ({ finished: finish() }))
+
+  await finalization.finished
+}
