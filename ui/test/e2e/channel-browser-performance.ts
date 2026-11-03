@@ -5,10 +5,12 @@ export const startBrowserPerformanceMeasurement = (
     startedAt?: number
     subscribeToClicks?: (onClick: (event: Pick<MouseEvent, "isTrusted" | "timeStamp">) => void) => void
     requestFrame?: (callback: FrameRequestCallback) => number
+    getNow?: () => number
   } = {},
 ): void => {
   const scope = input.scope ?? (window as BrowserMeasurementScope)
-  const startedAt = input.startedAt ?? performance.now()
+  const getNow = input.getNow ?? (() => performance.now())
+  const startedAt = input.startedAt ?? getNow()
   const createObserver =
     input.createObserver ??
     ((onEntries: (entries: BrowserPerformanceEntry[]) => void) =>
@@ -36,7 +38,8 @@ export const startBrowserPerformanceMeasurement = (
     })
   })
   observer.observe({ entryTypes: ["longtask", "layout-shift"] })
-  const eventObserver = createObserver((entries) => {
+
+  const recordEventEntries = (entries: BrowserPerformanceEntry[]): void => {
     entries.forEach((entry) => {
       if (entry.startTime < startedAt) {
         if (warmupEvents.length < 200) warmupEvents.push(entry.duration)
@@ -46,7 +49,8 @@ export const startBrowserPerformanceMeasurement = (
       const id = entry.interactionId
       if (id && (events.size < 200 || events.has(id))) events.set(id, Math.max(events.get(id) ?? 0, entry.duration))
     })
-  })
+  }
+  const eventObserver = createObserver(recordEventEntries)
   eventObserver.observe({ type: "event", durationThreshold: 16 })
 
   const subscribeToClicks =
@@ -59,10 +63,12 @@ export const startBrowserPerformanceMeasurement = (
   subscribeToClicks((event) => {
     if (!event.isTrusted || event.timeStamp < startedAt || observedClicks >= 200) return
     observedClicks += 1
-    requestFrame(() => requestFrame((paintAt) => clickEvents.push(Math.max(0, paintAt - event.timeStamp))))
+    requestFrame(() => requestFrame(() => clickEvents.push(getNow() - event.timeStamp)))
   })
 
   scope.getBrowserMeasurement = () => {
+    // Read buffered native entries before selecting the source, so slow input cannot become fallback evidence.
+    recordEventEntries(eventObserver.takeRecords?.() ?? [])
     const nativeEvents = Array.from(events.values())
 
     return {
@@ -93,4 +99,7 @@ export type BrowserPerformanceEntry = Pick<PerformanceEntry, "entryType" | "star
   hadRecentInput?: boolean
   sources?: Array<{ node?: Element }>
 }
-type MeasurementObserver = { observe: (options: PerformanceObserverInit) => void }
+type MeasurementObserver = {
+  observe: (options: PerformanceObserverInit) => void
+  takeRecords?: () => BrowserPerformanceEntry[]
+}

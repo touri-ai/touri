@@ -95,16 +95,47 @@ test("click measurement work stops at the bounded sample limit", () => {
   expect(requestFrame).toHaveBeenCalledTimes(400)
 })
 
-const startClickMeasurement = () => {
+test("click durations use the callback clock when animation timestamps lag behind input", () => {
+  const { scope, recordClick } = startClickMeasurement({ frameAt: 80, now: 125 })
+
+  recordClick({ isTrusted: true, timeStamp: 110 })
+
+  expect(scope.getBrowserMeasurement?.().events).toEqual([15])
+})
+
+test("buffered slow native entries remain authoritative before observer delivery", () => {
+  const { scope, recordClick } = startClickMeasurement({}, [
+    { entryType: "event", startTime: 110, duration: 160, interactionId: 3 },
+  ])
+
+  recordClick({ isTrusted: true, timeStamp: 110 })
+
+  expect(scope.getBrowserMeasurement?.()).toMatchObject({ events: [160], eventSource: "event-timing" })
+})
+
+const startClickMeasurement = (
+  clock: { frameAt?: number; now?: number } = {},
+  bufferedEvents: BrowserPerformanceEntry[] = [],
+) => {
   const scope: BrowserMeasurementScope = {}
   const subscribeToClicks = vi.fn((_onClick: (event: Pick<MouseEvent, "isTrusted" | "timeStamp">) => void) => {})
   const requestFrame = vi.fn((callback: FrameRequestCallback) => {
-    callback(120)
+    callback(clock.frameAt ?? 120)
     return 0
   })
-  const createObserver = vi.fn((_onEntries: (entries: BrowserPerformanceEntry[]) => void) => ({ observe: vi.fn() }))
+  const createObserver = vi.fn((_onEntries: (entries: BrowserPerformanceEntry[]) => void) => ({
+    observe: vi.fn(),
+    takeRecords: vi.fn(() => bufferedEvents),
+  }))
 
-  startBrowserPerformanceMeasurement({ scope, createObserver, subscribeToClicks, requestFrame, startedAt: 100 })
+  startBrowserPerformanceMeasurement({
+    scope,
+    createObserver,
+    subscribeToClicks,
+    requestFrame,
+    getNow: () => clock.now ?? 120,
+    startedAt: 100,
+  })
 
   return {
     scope,
