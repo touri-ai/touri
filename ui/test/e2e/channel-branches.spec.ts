@@ -139,6 +139,7 @@ test("private conversations still edit and select real branches", async ({ page,
   await input.fill("Pergunta original de demonstração.")
   await input.press("Enter")
   await expect(history.getByText("Resposta de demonstração.", { exact: true })).toBeVisible({ timeout: 30_000 })
+  await history.getByText("Pergunta original de demonstração.", { exact: true }).click()
   await page.getByRole("button", { name: "Editar", exact: true }).click()
   await page.getByRole("textbox", { name: "Editar mensagem" }).fill("Pergunta corrigida de demonstração.")
   await page.getByRole("button", { name: "Salvar e enviar", exact: true }).click()

@@ -549,6 +549,16 @@ Tokens are never written to disk, except the per-thread MCP token files (rewritt
   opts into notifications. Configured email sign-in uses the existing sender and local vault,
   preserving identical accepted responses and the existing redemption rules.
 
+### Progressive message actions
+
+In conversations, channels and direct messages, **Iniciar thread** / **Start thread** and
+**Editar** / **Edit** stay hidden until the message is hovered, receives keyboard focus or is
+tapped. Hidden actions cannot receive pointer clicks. Message bubbles can receive tap focus
+without adding Tab stops; keyboard users reach the action buttons directly with Tab.
+Selecting another message or the composer hides the previous message's actions on touch.
+Routine prompt actions and an open message editor remain visible. Existing thread reply
+counts, delivery status, approvals and branch navigation remain available independently.
+
 ### Deleting secondary channel conversations
 
 Channel sidebar secondary conversations expose a conversation actions menu and the existing deletion confirmation. Actions appear on pointer hover, keyboard focus or an open menu, and remain discoverable on touch devices. The channel's oldest active shared conversation is its main and cannot be deleted through thread deletion endpoints. After deleting the selected secondary conversation, selection returns to the channel main. Accepted deletions disappear from channel lists and workspace activity immediately, including after reload while active work is still stopping. Existing deletion workers cancel active work and remove messages, transcript records and unused attachments. Internal participant conversations are admitted to the same cleanup transaction and cannot be recreated while their shared conversation is being deleted. A deletion request admits at most 200 total conversations including internal participants; oversized bulk requests are rejected before writing.
