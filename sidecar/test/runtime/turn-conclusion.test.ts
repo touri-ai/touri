@@ -241,16 +241,20 @@ test("canceled failed-turn output stays published while orphan collection overla
         if (!preparingOutput || collecting || stage !== "runtime_part_finalization") return
 
         collecting = true
+        // Only the overlap fails fast; run startup keeps the store's busy wait for background connections.
+        f.db.exec("PRAGMA busy_timeout = 0")
         writer.exec("BEGIN IMMEDIATE")
         void collectUnusedOutputBlobs(f.db, f.root, Date.now(), null, new Set(), collectionStages.run, (reason) =>
           deferrals.add(reason),
         ).then(
           (removed) => {
             writer.exec("COMMIT")
+            f.db.exec("PRAGMA busy_timeout = 5000")
             collected.resolve(removed)
           },
           (error: Error) => {
             writer.exec("COMMIT")
+            f.db.exec("PRAGMA busy_timeout = 5000")
             collected.resolve(error)
           },
         )
@@ -258,7 +262,6 @@ test("canceled failed-turn output stays published while orphan collection overla
     },
   )
   cleanups.add(f.close)
-  f.db.exec("PRAGMA busy_timeout = 0")
   const writer = new Database(f.db.filename)
   cleanups.add(async () => writer.close())
   const append = spyOn(f.store, "appendParts").mockImplementation(() => {})
