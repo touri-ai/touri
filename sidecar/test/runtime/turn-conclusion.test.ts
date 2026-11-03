@@ -241,16 +241,20 @@ test("canceled failed-turn output stays published while orphan collection overla
         if (!preparingOutput || collecting || stage !== "runtime_part_finalization") return
 
         collecting = true
+        // Only the overlap fails fast; run startup keeps the store's busy wait for background connections.
+        f.db.exec("PRAGMA busy_timeout = 0")
         writer.exec("BEGIN IMMEDIATE")
         void collectUnusedOutputBlobs(f.db, f.root, Date.now(), null, new Set(), collectionStages.run, (reason) =>
           deferrals.add(reason),
         ).then(
           (removed) => {
             writer.exec("COMMIT")
+            f.db.exec("PRAGMA busy_timeout = 5000")
             collected.resolve(removed)
           },
           (error: Error) => {
             writer.exec("COMMIT")
+            f.db.exec("PRAGMA busy_timeout = 5000")
             collected.resolve(error)
           },
         )
@@ -258,7 +262,6 @@ test("canceled failed-turn output stays published while orphan collection overla
     },
   )
   cleanups.add(f.close)
-  f.db.exec("PRAGMA busy_timeout = 0")
   const writer = new Database(f.db.filename)
   cleanups.add(async () => writer.close())
   const append = spyOn(f.store, "appendParts").mockImplementation(() => {})
@@ -280,6 +283,58 @@ test("canceled failed-turn output stays published while orphan collection overla
   expect(Array.from(deferrals)).toEqual(["changed"])
   expect(await collectUnusedOutputBlobs(f.db, f.root)).toBe(0)
   expect(await Bun.file(attachment.path).text()).toBe(output)
+})
+
+test("a writer lock on the provider start record retries before the provider runs", async () => {
+  const output = "synthetic retained output\n".repeat(512)
+  const starts: number[] = []
+  const f = await fixture(async ({ onEvent }) => {
+    starts.push(Date.now())
+    onEvent({
+      type: "item",
+      part: { type: "command", callId: "shell", command: "sample", cwd: "/workspace", exitCode: 0, outputTail: output },
+    })
+    onEvent({ type: "text_delta", itemId: "answer", delta: "Pronto." })
+  })
+  cleanups.add(f.close)
+  const writer = new Database(f.db.filename)
+  cleanups.add(async () => writer.close())
+  const locked: string[] = []
+  const query = f.db.query.bind(f.db)
+  // Another connection owns the write lock exactly when the provider start is persisted, once.
+  const lockProviderStart = spyOn(f.db, "query").mockImplementation(((sql: string) => {
+    const statement = query(sql)
+    if (!sql.trimStart().startsWith("INSERT INTO runs")) return statement
+    return new Proxy(statement, {
+      get: (target, key) => {
+        const value = Reflect.get(target, key, target)
+        if (key !== "run") return typeof value === "function" ? value.bind(target) : value
+        return (...values: Parameters<typeof statement.run>) => {
+          if (locked.length || values[16] === null) return target.run(...values)
+          locked.push(sql)
+          writer.exec("BEGIN IMMEDIATE")
+          f.db.exec("PRAGMA busy_timeout = 0")
+          try {
+            return target.run(...values)
+          } finally {
+            f.db.exec("PRAGMA busy_timeout = 5000")
+            writer.exec("COMMIT")
+          }
+        }
+      },
+    })
+  }) as typeof f.db.query)
+  cleanups.add(async () => lockProviderStart.mockRestore())
+
+  const reply = await f.finish()
+
+  expect(locked).toHaveLength(1)
+  expect(starts).toHaveLength(1)
+  expect(reply.status).toBe("complete")
+  expect(reply.parts.find((part) => part.type === "command")?.outputAttachmentId).toBeString()
+  expect(f.db.query("SELECT status, provider_started_at IS NOT NULL AS started FROM runs").all()).toEqual([
+    { status: "succeeded", started: 1 },
+  ])
 })
 
 test.each(["runtime_part_finalization", "runtime_output_preparation"] as const)(
