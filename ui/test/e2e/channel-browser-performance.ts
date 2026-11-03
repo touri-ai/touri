@@ -3,6 +3,8 @@ export const startBrowserPerformanceMeasurement = (
     scope?: BrowserMeasurementScope
     createObserver?: (onEntries: (entries: BrowserPerformanceEntry[]) => void) => MeasurementObserver
     startedAt?: number
+    subscribeToClicks?: (onClick: (event: Pick<MouseEvent, "isTrusted" | "timeStamp">) => void) => void
+    requestFrame?: (callback: FrameRequestCallback) => number
   } = {},
 ): void => {
   const scope = input.scope ?? (window as BrowserMeasurementScope)
@@ -15,6 +17,8 @@ export const startBrowserPerformanceMeasurement = (
   const longTasks: number[] = []
   const events = new Map<number, number>()
   const warmupEvents: number[] = []
+  const clickEvents: number[] = []
+  let observedClicks = 0
   const shifts: number[] = []
   const shiftSources: string[] = []
   const observer = createObserver((entries) => {
@@ -44,18 +48,40 @@ export const startBrowserPerformanceMeasurement = (
     })
   })
   eventObserver.observe({ type: "event", durationThreshold: 16 })
-  scope.getBrowserMeasurement = () => ({
-    longTasks,
-    events: Array.from(events.values()),
-    warmupEvents,
-    cls: shifts.reduce((total, value) => total + value, 0),
-    shiftSources,
+
+  const subscribeToClicks =
+    input.subscribeToClicks ??
+    ((onClick: (event: Pick<MouseEvent, "isTrusted" | "timeStamp">) => void) =>
+      document.addEventListener("click", onClick, { capture: true }))
+  const requestFrame = input.requestFrame ?? ((callback: FrameRequestCallback) => requestAnimationFrame(callback))
+  // Event Timing omits inputs below 16 ms. Measure real clicks through a paint too, so a fast
+  // interval still has evidence; retain native samples whenever present, including slow inputs.
+  subscribeToClicks((event) => {
+    if (!event.isTrusted || event.timeStamp < startedAt || observedClicks >= 200) return
+    observedClicks += 1
+    requestFrame(() => requestFrame((paintAt) => clickEvents.push(Math.max(0, paintAt - event.timeStamp))))
   })
+
+  scope.getBrowserMeasurement = () => {
+    const nativeEvents = Array.from(events.values())
+
+    return {
+      longTasks,
+      events: nativeEvents.length ? nativeEvents : clickEvents,
+      eventSource: nativeEvents.length ? "event-timing" : "click-to-paint",
+      clickEvents,
+      warmupEvents,
+      cls: shifts.reduce((total, value) => total + value, 0),
+      shiftSources,
+    }
+  }
 }
 
 export type BrowserMeasurement = {
   longTasks: number[]
   events: number[]
+  eventSource: "event-timing" | "click-to-paint"
+  clickEvents: number[]
   warmupEvents: number[]
   cls: number
   shiftSources: string[]
