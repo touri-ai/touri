@@ -1,5 +1,5 @@
 import type { ApiRoutes, DoctorReport, NotificationPreferences } from "@touri/contracts"
-import { lazy, Suspense, useState } from "react"
+import { lazy, Suspense, useEffect, useRef, useState } from "react"
 import type { TauriInvoke, UiApi } from "../api/client"
 import { readTheme, setTheme, type ThemePreference } from "../design/theme"
 import { userFacingError } from "../errors"
@@ -51,6 +51,7 @@ const ServerModeSettings = lazy(() =>
 
 type SettingsModalProps = {
   canEditOwnerProfile?: boolean
+  accountName?: string | undefined
 
   doctor?: DoctorReport | null
   doctorError?: string | null
@@ -70,6 +71,7 @@ type SettingsModalProps = {
 
 export const SettingsModal = ({
   canEditOwnerProfile = true,
+  accountName,
   settings,
   onClose,
   onSave,
@@ -89,6 +91,12 @@ export const SettingsModal = ({
   const [section, setSection] = useState(getInitialSettingsSection(initialSection))
   useSettingFocus(focusSetting)
   const [reportOpen, setReportOpen] = useState(initialSection === "report")
+  const profileGroup = useRef<HTMLDivElement>(null)
+  // Opening from your name lands on the profile, the last block of the section, instead of the controls above it.
+  useEffect(() => {
+    if (initialSection !== "profile") return
+    profileGroup.current?.scrollIntoView?.({ block: "start" })
+  }, [initialSection])
   const [ownerProfile, setOwnerProfile] = useState(settings?.ownerProfile ?? { name: "", avatar: null })
   const [theme, setThemePreference] = useState<ThemePreference>(readTheme)
   const [inlinePreview, setInlinePreview] = useState(readInlinePreviewPreference)
@@ -192,20 +200,6 @@ export const SettingsModal = ({
             description={t("Seu perfil, as prévias, a ordem dos bots e os atalhos.")}
             defaultOpen={initialSection === "shortcuts" || initialSection === "profile"}
           >
-            {canEditOwnerProfile && (
-              <div className="settings-group">
-                <div className="settings-row-copy owner-profile-heading">
-                  <strong>{t("Profile")}</strong>
-                  <p>{t("Your name and avatar in conversations.")}</p>
-                </div>
-                <OwnerProfileSettings
-                  profile={ownerProfile}
-                  onChange={setOwnerProfile}
-                  focusName={initialSection === "profile"}
-                  onPendingChange={setPreparingOwnerPhoto}
-                />
-              </div>
-            )}
             <SettingsGroup>
               <SettingsRow
                 title={SETTINGS.inlinePreview.label}
@@ -254,6 +248,21 @@ export const SettingsModal = ({
                 <code>{settings?.computerUseHotkey ?? "⌃⌥⌘."}</code>
               </div>
             </div>
+            {canEditOwnerProfile && (
+              <div className="settings-group" ref={profileGroup}>
+                <div className="settings-row-copy owner-profile-heading">
+                  <strong>{t("Profile")}</strong>
+                  <p>{t("Your name and avatar in conversations.")}</p>
+                </div>
+                <OwnerProfileSettings
+                  profile={ownerProfile}
+                  accountName={accountName}
+                  onChange={setOwnerProfile}
+                  focusName={initialSection === "profile"}
+                  onPendingChange={setPreparingOwnerPhoto}
+                />
+              </div>
+            )}
           </SettingsDisclosure>
         </SettingsPane>
         <SettingsPane {...pane("privacy")}>

@@ -51,6 +51,7 @@ import { getSidebarDataByBot, getSidebarThreads } from "../sidebarThreads"
 import { getSidebarThreadTitle } from "../sidebarThreadTitle"
 import { useRoutineRunCountsToday } from "../useRoutineRunCountsToday"
 import { useMascotSnapshot } from "./AvatarRuntime"
+import { getAccountName } from "./accountName"
 import { BotActionsMenu } from "./BotActionsMenu"
 import { BotAvatar } from "./BotAvatar"
 import { ConversationLoading } from "./ConversationLoading"
@@ -355,11 +356,7 @@ export const Sidebar = (props: SidebarProps) => {
   const needsYou = useMemo(() => attention.filter((item) => !isInformationalNotice(item)), [attention])
   const person = props.currentPerson ?? { id: "owner", avatarSeed: "owner" }
   const hasProfile = Boolean(props.ownerProfile?.name.trim() || props.ownerProfile?.avatar)
-  const personName =
-    props.ownerProfile?.name.trim() ||
-    props.currentPerson?.handle?.trim() ||
-    props.currentPerson?.name?.trim() ||
-    t("Você")
+  const personName = props.ownerProfile?.name.trim() || getAccountName(props.currentPerson) || t("Você")
   const ordered = useSidebarOrder({ ...props, messages, notifications, attention })
   const botsWaitingCount = [...ordered.activity.values()].filter((activity) => activity.kind === "needs-you").length
   const attentionThreadIds = useMemo(

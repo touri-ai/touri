@@ -31,6 +31,8 @@ export const ptBR = {
   "Your name and avatar in conversations.": "Seu nome e avatar nas conversas.",
   "Profile name": "Nome do perfil",
   "Upload profile photo": "Enviar foto do perfil",
+  "Change avatar": "Alterar avatar",
+  "Choose photo": "Escolher foto",
   "Choose PNG, JPEG or WebP up to 5 MB.": "Escolha PNG, JPEG ou WebP de até 5 MB.",
   "Could not read the photo. Choose PNG, JPEG or WebP up to 5 MB.":
     "Não foi possível ler a foto. Escolha PNG, JPEG ou WebP de até 5 MB.",
