@@ -33,9 +33,9 @@ for (const width of [1440, 390])
         await expect(page.getByLabel("Nome do perfil", { exact: true })).toBeFocused()
         await expect(page.getByLabel("Nome do perfil", { exact: true })).toBeInViewport()
         const editor = page.locator(".owner-profile-settings")
-        // The profile closes the section, so opening from your name shows it without the switches above.
-        const lastGroup = page.locator(".settings-disclosure-content > .settings-group").last()
-        await expect(lastGroup.locator(".owner-profile-settings")).toBeVisible()
+        // Profile editing leads the section, before keyboard help and chat display preferences.
+        const firstGroup = page.locator(".settings-disclosure-content > .settings-group").first()
+        await expect(firstGroup.locator(".owner-profile-settings")).toBeVisible()
         await expect(page.locator(".settings-group-card .owner-profile-settings")).toHaveCount(0)
         const rowPadding = await page
           .locator(".settings-row")

@@ -169,18 +169,6 @@ export const OwnerProfileSettings = ({
           avatar={profile.avatar}
           size={64}
         />
-        {profile.avatar && (
-          <button
-            type="button"
-            className="button button-quiet"
-            onClick={() => {
-              clearPhotoDraft()
-              onChange({ ...profile, avatar: null })
-            }}
-          >
-            {t("Remove profile avatar")}
-          </button>
-        )}
       </div>
       <Disclosure className="owner-profile-avatar" summary={t("Change avatar")} openWhen={Boolean(source || error)}>
         <input
@@ -194,9 +182,23 @@ export const OwnerProfileSettings = ({
             event.target.value = ""
           }}
         />
-        <button type="button" className="button button-quiet" onClick={() => photoInput.current?.click()}>
-          {t("Choose photo")}
-        </button>
+        <div className="owner-profile-identity">
+          <button type="button" className="button button-quiet" onClick={() => photoInput.current?.click()}>
+            {t("Choose photo")}
+          </button>
+          {profile.avatar && (
+            <button
+              type="button"
+              className="button button-quiet"
+              onClick={() => {
+                clearPhotoDraft()
+                onChange({ ...profile, avatar: null })
+              }}
+            >
+              {t("Remove profile avatar")}
+            </button>
+          )}
+        </div>
         <p className="owner-profile-hint">{t("Choose PNG, JPEG or WebP up to 5 MB.")}</p>
         {error && (
           <p className="owner-profile-error" role="alert">

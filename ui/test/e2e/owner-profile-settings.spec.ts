@@ -1,6 +1,6 @@
 import { mkdir } from "node:fs/promises"
 import { join } from "node:path"
-import { expect, test } from "@playwright/test"
+import { expect, type Locator, test } from "@playwright/test"
 import budgets from "./ui-budget.json" with { type: "json" }
 
 for (const width of [390, 1024, 1440]) {
@@ -21,17 +21,7 @@ for (const width of [390, 1024, 1440]) {
         await mkdir(directory, { recursive: true })
         if (width !== 1024)
           await page.screenshot({ path: join(directory, `profile-${width}-${theme}.png`), animations: "disabled" })
-        const controls = await page.getByRole("dialog").evaluate((root) =>
-          Array.from(root.querySelectorAll<HTMLElement>("button, input, select, summary, [role=tab]"))
-            .filter((control) => {
-              if (control.matches(":disabled")) return false
-              const bounds = control.getBoundingClientRect()
-              const target = document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)
-
-              return target && control.contains(target)
-            })
-            .map((control) => control.getAttribute("aria-label") || control.textContent || control.id),
-        )
+        const controls = await getVisibleControls(page.getByRole("dialog"))
 
         expect(controls.length, controls.join(" | ")).toBeLessThanOrEqual(budgets["app-settings"].maxControls)
         await expect(editor.locator(".person-initials")).toHaveText("PT")
@@ -63,7 +53,33 @@ for (const width of [390, 1024, 1440]) {
         })
         await expect(editor.getByRole("alert")).toContainText("Não foi possível ler a foto")
         expect(await editor.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
+
+        await editor.getByRole("button", { name: "Sortear", exact: true }).click()
+        await page.getByRole("button", { name: "Salvar preferências", exact: true }).click()
+        await expect(page.getByRole("dialog")).toHaveCount(0)
+        if (width === 390) await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
+        await page.locator(".user-chip").click()
+        await expect(page.getByLabel("Nome do perfil", { exact: true })).toBeFocused()
+
+        const savedControls = await getVisibleControls(page.getByRole("dialog"))
+        expect(savedControls.length, savedControls.join(" | ")).toBeLessThanOrEqual(budgets["app-settings"].maxControls)
+        await expect(editor.getByRole("button", { name: "Remover avatar do perfil" })).toHaveCount(0)
+        await editor.getByRole("button", { name: "Alterar avatar", exact: true }).click()
+        await expect(editor.getByRole("button", { name: "Remover avatar do perfil" })).toBeVisible()
       })
     }
   })
 }
+
+const getVisibleControls = (dialog: Locator) =>
+  dialog.evaluate((root) =>
+    Array.from(root.querySelectorAll<HTMLElement>("button, input, select, summary, [role=tab]"))
+      .filter((control) => {
+        if (control.matches(":disabled")) return false
+        const bounds = control.getBoundingClientRect()
+        const target = document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)
+
+        return target && control.contains(target)
+      })
+      .map((control) => control.getAttribute("aria-label") || control.textContent || control.id),
+  )

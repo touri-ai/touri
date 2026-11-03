@@ -92,7 +92,7 @@ export const SettingsModal = ({
   useSettingFocus(focusSetting)
   const [reportOpen, setReportOpen] = useState(initialSection === "report")
   const profileGroup = useRef<HTMLDivElement>(null)
-  // Opening from your name lands on the profile, the last block of the section, instead of the controls above it.
+  // Keep the profile shortcut focused on identity, with the other chat preferences below it.
   useEffect(() => {
     if (initialSection !== "profile") return
     profileGroup.current?.scrollIntoView?.({ block: "start" })
@@ -200,6 +200,43 @@ export const SettingsModal = ({
             description={t("Seu perfil, as prévias, a ordem dos bots e os atalhos.")}
             defaultOpen={initialSection === "shortcuts" || initialSection === "profile"}
           >
+            {canEditOwnerProfile && (
+              <div className="settings-group" ref={profileGroup}>
+                <div className="settings-row-copy owner-profile-heading">
+                  <strong>{t("Profile")}</strong>
+                  <p>{t("Your name and avatar in conversations.")}</p>
+                </div>
+                <OwnerProfileSettings
+                  profile={ownerProfile}
+                  accountName={accountName}
+                  onChange={setOwnerProfile}
+                  focusName={initialSection === "profile"}
+                  onPendingChange={setPreparingOwnerPhoto}
+                />
+              </div>
+            )}
+            <SettingsGroup>
+              <SettingsRow
+                title={SETTINGS.shortcutPalette.label}
+                description={SETTINGS.shortcutPalette.description}
+                settingId={SETTINGS.shortcutPalette.id}
+              >
+                <kbd>{paletteShortcutLabel()}</kbd>
+              </SettingsRow>
+              <SettingsRow
+                title={SETTINGS.shortcutSend.label}
+                description={SETTINGS.shortcutSend.description}
+                settingId={SETTINGS.shortcutSend.id}
+              >
+                <kbd>Enter</kbd>
+              </SettingsRow>
+            </SettingsGroup>
+            <div className="settings-note">
+              <div>
+                <span>{t("Computer-use hotkey:")}</span>
+                <code>{settings?.computerUseHotkey ?? "⌃⌥⌘."}</code>
+              </div>
+            </div>
             <SettingsGroup>
               <SettingsRow
                 title={SETTINGS.inlinePreview.label}
@@ -226,43 +263,6 @@ export const SettingsModal = ({
                 />
               </SettingsRow>
             </SettingsGroup>
-            <SettingsGroup>
-              <SettingsRow
-                title={SETTINGS.shortcutPalette.label}
-                description={SETTINGS.shortcutPalette.description}
-                settingId={SETTINGS.shortcutPalette.id}
-              >
-                <kbd>{paletteShortcutLabel()}</kbd>
-              </SettingsRow>
-              <SettingsRow
-                title={SETTINGS.shortcutSend.label}
-                description={SETTINGS.shortcutSend.description}
-                settingId={SETTINGS.shortcutSend.id}
-              >
-                <kbd>Enter</kbd>
-              </SettingsRow>
-            </SettingsGroup>
-            <div className="settings-note">
-              <div>
-                <span>{t("Computer-use hotkey:")}</span>
-                <code>{settings?.computerUseHotkey ?? "⌃⌥⌘."}</code>
-              </div>
-            </div>
-            {canEditOwnerProfile && (
-              <div className="settings-group" ref={profileGroup}>
-                <div className="settings-row-copy owner-profile-heading">
-                  <strong>{t("Profile")}</strong>
-                  <p>{t("Your name and avatar in conversations.")}</p>
-                </div>
-                <OwnerProfileSettings
-                  profile={ownerProfile}
-                  accountName={accountName}
-                  onChange={setOwnerProfile}
-                  focusName={initialSection === "profile"}
-                  onPendingChange={setPreparingOwnerPhoto}
-                />
-              </div>
-            )}
           </SettingsDisclosure>
         </SettingsPane>
         <SettingsPane {...pane("privacy")}>
