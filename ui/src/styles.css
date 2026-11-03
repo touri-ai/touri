@@ -4603,10 +4603,41 @@ button.brand-button:hover:not(:disabled) {
 .owner-profile-settings label {
   display: grid;
   gap: var(--space-8);
+  font-size: var(--fs-meta);
+  font-weight: var(--weight-medium);
 }
 .owner-profile-settings input {
   max-width: 100%;
   min-width: 0;
+}
+.owner-profile-identity {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-12);
+}
+.owner-profile-avatar .ds-disclosure-content {
+  display: grid;
+  gap: var(--space-12);
+  min-width: 0;
+}
+.owner-profile-avatar .ds-disclosure-content[hidden] {
+  display: none;
+}
+.owner-profile-avatar .ds-disclosure-content > .button {
+  justify-self: start;
+}
+.owner-profile-settings :is(.owner-profile-hint, .owner-profile-error) {
+  margin: 0;
+  font-size: var(--fs-caption);
+  line-height: var(--leading-body);
+  overflow-wrap: anywhere;
+}
+.owner-profile-hint {
+  color: var(--text-2);
+}
+.owner-profile-error {
+  color: var(--danger);
 }
 
 .chat-message-list .message-bubble[data-work-message] > .routine-run-header {

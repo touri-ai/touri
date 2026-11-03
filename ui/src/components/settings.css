@@ -221,6 +221,15 @@
   min-height: 36px;
   border-radius: var(--radius-sm);
 }
+/* Owner profile controls keep a full touch target at every width (#1309). */
+.settings-modal .owner-profile-settings button,
+.settings-modal .owner-profile-settings > input {
+  min-height: 44px;
+}
+.settings-modal .owner-profile-avatar > .ds-disclosure-trigger {
+  font-size: var(--fs-meta);
+  font-weight: var(--weight-medium);
+}
 .settings-modal .button:hover {
   filter: none;
 }

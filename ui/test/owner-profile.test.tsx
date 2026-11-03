@@ -60,6 +60,7 @@ it("profile settings removes an existing avatar without changing the name", () =
     />,
   )
 
+  fireEvent.click(screen.getByRole("button", { name: "Alterar avatar", exact: true }))
   fireEvent.click(screen.getByRole("button", { name: "Remover avatar do perfil" }))
 
   expect(onChange).toHaveBeenCalledWith({ name: "Pessoa", avatar: null })

@@ -2,15 +2,18 @@ import type { OwnerProfile } from "@touri/contracts"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { t } from "../i18n"
 import { AvatarPicker } from "./AvatarPicker"
+import { Disclosure } from "./Disclosure"
 import { PersonAvatar } from "./PersonAvatar"
 
 export const OwnerProfileSettings = ({
   profile,
+  accountName,
   onChange,
   focusName = false,
   onPendingChange,
 }: {
   profile: OwnerProfile
+  accountName?: string | undefined
   focusName?: boolean
   onChange: (profile: OwnerProfile) => void
   onPendingChange?: (pending: boolean) => void
@@ -22,6 +25,7 @@ export const OwnerProfileSettings = ({
   const [error, setError] = useState(false)
   const [encodingPhoto, setEncodingPhoto] = useState(false)
   const canvas = useRef<HTMLCanvasElement>(null)
+  const photoInput = useRef<HTMLInputElement>(null)
   const request = useRef(0)
   const latest = useRef({ profile, onChange, onPendingChange, source })
   latest.current = { profile, onChange, onPendingChange, source }
@@ -142,6 +146,12 @@ export const OwnerProfileSettings = ({
   }
   const mascot =
     profile.avatar?.kind === "mascot" ? profile.avatar : { avatarSeed: "owner", avatarShape: null, color: null }
+  const displayName = profile.name.trim() || accountName || t("Você")
+  const clearPhotoDraft = () => {
+    request.current += 1
+    setPhotoPending({ reading: false, encoding: false })
+    setSource(null)
+  }
   return (
     <div className="owner-profile-settings">
       <label htmlFor="owner-name">{t("Profile name")}</label>
@@ -149,109 +159,115 @@ export const OwnerProfileSettings = ({
         id="owner-name"
         data-initial-focus={focusName || undefined}
         value={profile.name}
+        placeholder={accountName}
         maxLength={80}
         onChange={(event) => onChange({ ...profile, name: event.target.value })}
       />
-      <PersonAvatar
-        person={{ id: "owner", avatarSeed: "owner", name: profile.name || t("Você") }}
-        avatar={profile.avatar}
-        size={64}
-      />
-      <label htmlFor="owner-photo">{t("Upload profile photo")}</label>
-      <input
-        id="owner-photo"
-        type="file"
-        accept="image/png,image/jpeg,image/webp"
-        onChange={(event) => {
-          void upload(event.target.files?.[0])
-          event.target.value = ""
-        }}
-      />
-      <p>{t("Choose PNG, JPEG or WebP up to 5 MB.")}</p>
-      {error && <p role="alert">{t("Could not read the photo. Choose PNG, JPEG or WebP up to 5 MB.")}</p>}
-      {source && (
-        <div>
-          <canvas ref={canvas} width={256} height={256} aria-label={t("Photo crop preview")} />
-          <label>
-            {t("Zoom")}
-            <input
-              type="range"
-              min="1"
-              max="3"
-              step="0.05"
-              value={zoom}
-              onChange={(event) => setZoom(Number(event.target.value))}
-            />
-          </label>
-          <label>
-            {t("Horizontal position")}
-            <input
-              type="range"
-              min="0"
-              max="100"
-              value={horizontal}
-              onChange={(event) => setHorizontal(Number(event.target.value))}
-            />
-          </label>
-          <label>
-            {t("Vertical position")}
-            <input
-              type="range"
-              min="0"
-              max="100"
-              value={vertical}
-              onChange={(event) => setVertical(Number(event.target.value))}
-            />
-          </label>
-          <button
-            type="button"
-            className="button button-quiet"
-            disabled={error || encodingPhoto}
-            onClick={() => {
-              request.current += 1
-              setPhotoPending({ reading: false, encoding: false })
-              setSource(null)
-            }}
-          >
-            {t("Use cropped photo")}
+      <div className="owner-profile-identity">
+        <PersonAvatar
+          person={{ id: "owner", avatarSeed: "owner", name: displayName }}
+          avatar={profile.avatar}
+          size={64}
+        />
+      </div>
+      <Disclosure className="owner-profile-avatar" summary={t("Change avatar")} openWhen={Boolean(source || error)}>
+        <input
+          ref={photoInput}
+          type="file"
+          hidden
+          aria-label={t("Upload profile photo")}
+          accept="image/png,image/jpeg,image/webp"
+          onChange={(event) => {
+            void upload(event.target.files?.[0])
+            event.target.value = ""
+          }}
+        />
+        <div className="owner-profile-identity">
+          <button type="button" className="button button-quiet" onClick={() => photoInput.current?.click()}>
+            {t("Choose photo")}
           </button>
-          <button
-            type="button"
-            className="button button-quiet"
-            onClick={() => {
-              request.current += 1
-              setPhotoPending({ reading: false, encoding: false })
-              setSource(null)
-              onChange({ ...profile, avatar: avatarBeforeCrop.current })
-            }}
-          >
-            {t("Cancel")}
-          </button>
+          {profile.avatar && (
+            <button
+              type="button"
+              className="button button-quiet"
+              onClick={() => {
+                clearPhotoDraft()
+                onChange({ ...profile, avatar: null })
+              }}
+            >
+              {t("Remove profile avatar")}
+            </button>
+          )}
         </div>
-      )}
-      <AvatarPicker
-        bot={{ id: "owner", ...mascot }}
-        label={t("Create profile mascot")}
-        onChange={(choice) => {
-          request.current += 1
-          setPhotoPending({ reading: false, encoding: false })
-          setSource(null)
-          onChange({ ...profile, avatar: { kind: "mascot", ...mascot, ...choice } })
-        }}
-      />
-      <button
-        type="button"
-        className="button button-quiet"
-        disabled={!profile.avatar}
-        onClick={() => {
-          request.current += 1
-          setPhotoPending({ reading: false, encoding: false })
-          setSource(null)
-          onChange({ ...profile, avatar: null })
-        }}
-      >
-        {t("Remove profile avatar")}
-      </button>
+        <p className="owner-profile-hint">{t("Choose PNG, JPEG or WebP up to 5 MB.")}</p>
+        {error && (
+          <p className="owner-profile-error" role="alert">
+            {t("Could not read the photo. Choose PNG, JPEG or WebP up to 5 MB.")}
+          </p>
+        )}
+        {source && (
+          <div>
+            <canvas ref={canvas} width={256} height={256} aria-label={t("Photo crop preview")} />
+            <label>
+              {t("Zoom")}
+              <input
+                type="range"
+                min="1"
+                max="3"
+                step="0.05"
+                value={zoom}
+                onChange={(event) => setZoom(Number(event.target.value))}
+              />
+            </label>
+            <label>
+              {t("Horizontal position")}
+              <input
+                type="range"
+                min="0"
+                max="100"
+                value={horizontal}
+                onChange={(event) => setHorizontal(Number(event.target.value))}
+              />
+            </label>
+            <label>
+              {t("Vertical position")}
+              <input
+                type="range"
+                min="0"
+                max="100"
+                value={vertical}
+                onChange={(event) => setVertical(Number(event.target.value))}
+              />
+            </label>
+            <button
+              type="button"
+              className="button button-quiet"
+              disabled={error || encodingPhoto}
+              onClick={clearPhotoDraft}
+            >
+              {t("Use cropped photo")}
+            </button>
+            <button
+              type="button"
+              className="button button-quiet"
+              onClick={() => {
+                clearPhotoDraft()
+                onChange({ ...profile, avatar: avatarBeforeCrop.current })
+              }}
+            >
+              {t("Cancel")}
+            </button>
+          </div>
+        )}
+        <AvatarPicker
+          bot={{ id: "owner", ...mascot }}
+          label={t("Create profile mascot")}
+          onChange={(choice) => {
+            clearPhotoDraft()
+            onChange({ ...profile, avatar: { kind: "mascot", ...mascot, ...choice } })
+          }}
+        />
+      </Disclosure>
     </div>
   )
 }

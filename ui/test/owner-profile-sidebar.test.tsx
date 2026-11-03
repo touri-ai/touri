@@ -58,7 +58,8 @@ it("shows the saved photo and restores profile initials when it is removed", asy
 
   expect(getProfileChip().querySelector("img")).toHaveAttribute("src", dataUrl)
   fireEvent.click(getProfileChip())
-  fireEvent.click(await screen.findByRole("button", { name: "Remover avatar do perfil" }))
+  fireEvent.click(await screen.findByRole("button", { name: "Alterar avatar", exact: true }))
+  fireEvent.click(screen.getByRole("button", { name: "Remover avatar do perfil" }))
   fireEvent.click(screen.getByRole("button", { name: "Salvar preferências" }))
 
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())

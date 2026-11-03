@@ -1,5 +1,5 @@
 import type { ApiRoutes, DoctorReport, NotificationPreferences } from "@touri/contracts"
-import { lazy, Suspense, useState } from "react"
+import { lazy, Suspense, useEffect, useRef, useState } from "react"
 import type { TauriInvoke, UiApi } from "../api/client"
 import { readTheme, setTheme, type ThemePreference } from "../design/theme"
 import { userFacingError } from "../errors"
@@ -51,6 +51,7 @@ const ServerModeSettings = lazy(() =>
 
 type SettingsModalProps = {
   canEditOwnerProfile?: boolean
+  accountName?: string | undefined
 
   doctor?: DoctorReport | null
   doctorError?: string | null
@@ -70,6 +71,7 @@ type SettingsModalProps = {
 
 export const SettingsModal = ({
   canEditOwnerProfile = true,
+  accountName,
   settings,
   onClose,
   onSave,
@@ -89,6 +91,12 @@ export const SettingsModal = ({
   const [section, setSection] = useState(getInitialSettingsSection(initialSection))
   useSettingFocus(focusSetting)
   const [reportOpen, setReportOpen] = useState(initialSection === "report")
+  const profileGroup = useRef<HTMLDivElement>(null)
+  // Keep the profile shortcut focused on identity, with the other chat preferences below it.
+  useEffect(() => {
+    if (initialSection !== "profile") return
+    profileGroup.current?.scrollIntoView?.({ block: "start" })
+  }, [initialSection])
   const [ownerProfile, setOwnerProfile] = useState(settings?.ownerProfile ?? { name: "", avatar: null })
   const [theme, setThemePreference] = useState<ThemePreference>(readTheme)
   const [inlinePreview, setInlinePreview] = useState(readInlinePreviewPreference)
@@ -193,19 +201,42 @@ export const SettingsModal = ({
             defaultOpen={initialSection === "shortcuts" || initialSection === "profile"}
           >
             {canEditOwnerProfile && (
-              <div className="settings-group">
+              <div className="settings-group" ref={profileGroup}>
                 <div className="settings-row-copy owner-profile-heading">
                   <strong>{t("Profile")}</strong>
                   <p>{t("Your name and avatar in conversations.")}</p>
                 </div>
                 <OwnerProfileSettings
                   profile={ownerProfile}
+                  accountName={accountName}
                   onChange={setOwnerProfile}
                   focusName={initialSection === "profile"}
                   onPendingChange={setPreparingOwnerPhoto}
                 />
               </div>
             )}
+            <SettingsGroup>
+              <SettingsRow
+                title={SETTINGS.shortcutPalette.label}
+                description={SETTINGS.shortcutPalette.description}
+                settingId={SETTINGS.shortcutPalette.id}
+              >
+                <kbd>{paletteShortcutLabel()}</kbd>
+              </SettingsRow>
+              <SettingsRow
+                title={SETTINGS.shortcutSend.label}
+                description={SETTINGS.shortcutSend.description}
+                settingId={SETTINGS.shortcutSend.id}
+              >
+                <kbd>Enter</kbd>
+              </SettingsRow>
+            </SettingsGroup>
+            <div className="settings-note">
+              <div>
+                <span>{t("Computer-use hotkey:")}</span>
+                <code>{settings?.computerUseHotkey ?? "⌃⌥⌘."}</code>
+              </div>
+            </div>
             <SettingsGroup>
               <SettingsRow
                 title={SETTINGS.inlinePreview.label}
@@ -232,28 +263,6 @@ export const SettingsModal = ({
                 />
               </SettingsRow>
             </SettingsGroup>
-            <SettingsGroup>
-              <SettingsRow
-                title={SETTINGS.shortcutPalette.label}
-                description={SETTINGS.shortcutPalette.description}
-                settingId={SETTINGS.shortcutPalette.id}
-              >
-                <kbd>{paletteShortcutLabel()}</kbd>
-              </SettingsRow>
-              <SettingsRow
-                title={SETTINGS.shortcutSend.label}
-                description={SETTINGS.shortcutSend.description}
-                settingId={SETTINGS.shortcutSend.id}
-              >
-                <kbd>Enter</kbd>
-              </SettingsRow>
-            </SettingsGroup>
-            <div className="settings-note">
-              <div>
-                <span>{t("Computer-use hotkey:")}</span>
-                <code>{settings?.computerUseHotkey ?? "⌃⌥⌘."}</code>
-              </div>
-            </div>
           </SettingsDisclosure>
         </SettingsPane>
         <SettingsPane {...pane("privacy")}>

@@ -70,6 +70,10 @@ const request: ApiRequest = async (route, input, path, transport) => {
       kind: "device",
       person: { id: "owner", name: "Pessoa Teste", email: null, avatarSeed: "owner", role: "admin" },
     } as ApiRoutes[typeof route]["res"]
+  if (route === "GET /groups/:id/people")
+    return {
+      people: [{ id: "owner", name: "Pessoa Teste", avatarSeed: "owner", role: "admin" }],
+    } as ApiRoutes[typeof route]["res"]
   if (route === "GET /threads/:id/messages")
     return {
       messages: getMessages(path?.id ?? thread.id),

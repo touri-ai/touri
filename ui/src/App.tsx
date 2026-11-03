@@ -28,6 +28,7 @@ import type { ApprovalTarget } from "./approvalNavigation"
 import { isResolvedNotification } from "./approvalState"
 import { ApprovalNotice } from "./components/ApprovalNotice"
 import { AvatarRuntimeProvider } from "./components/AvatarRuntime"
+import { getAccountName } from "./components/accountName"
 import { activeMessagePath } from "./components/activeMessagePath"
 import { BotAvatar } from "./components/BotAvatar"
 import { DeferredChatPanel as ChatPanel } from "./components/DeferredChatPanel"
@@ -1020,6 +1021,7 @@ const AppContent = ({ kernel }: AppProps) => {
   const settingsModal = modal === "settings" && (
     <SettingsModal
       canEditOwnerProfile={currentPersonId === "owner"}
+      accountName={getAccountName(sidebarPerson)}
       api={api ?? undefined}
       invokeCommand={invokeCommand}
       doctor={data.doctor}
