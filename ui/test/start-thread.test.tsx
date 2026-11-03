@@ -144,3 +144,20 @@ test("a creation event before the HTTP response keeps the pending action mounted
   expect(request.mock.calls[0]?.[3]?.signal?.aborted).toBe(false)
   expect(onSelect).toHaveBeenCalledWith(thread.id)
 })
+
+test("a tap can select a message to reveal its actions without adding a tab stop", () => {
+  const api = createMockApi()
+  const view = render(
+    <VirtualMessageList
+      messages={[message]}
+      api={api}
+      onSelectThread={vi.fn()}
+      onSwitchBranch={vi.fn()}
+      onRetry={vi.fn()}
+    />,
+  )
+
+  const bubble = view.container.querySelector(".message-bubble")
+
+  expect(bubble).toHaveAttribute("tabindex", "-1")
+})
