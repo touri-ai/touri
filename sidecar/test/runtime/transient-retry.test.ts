@@ -35,6 +35,45 @@ test("a persistent lock surfaces after the bounded retries", async () => {
   expect(calls.count).toBe(4)
 }, 15_000)
 
+test("a lock thrown before the provider starts is retried like a reported lock", async () => {
+  const calls = { count: 0 }
+  const result = await retryTransient({
+    run: async () => {
+      calls.count += 1
+      if (calls.count === 1) throw Object.assign(new Error("database is locked"), { code: "SQLITE_BUSY" })
+      return null
+    },
+    failureOf: (value) => value,
+    canRetry: () => true,
+    signal: new AbortController().signal,
+  })
+  expect(result).toBeNull()
+  expect(calls.count).toBe(2)
+}, 10_000)
+
+test("a thrown error that is not transient, or after the turn started, is not retried", async () => {
+  const thrown = (message: string) => {
+    const calls = { count: 0 }
+    const run = async (): Promise<string | null> => {
+      calls.count += 1
+      throw new Error(message)
+    }
+    return { calls, run }
+  }
+  const other = thrown("boom")
+  const started = thrown("database is locked")
+  const signal = new AbortController().signal
+
+  await expect(retryTransient({ run: other.run, failureOf: (v) => v, canRetry: () => true, signal })).rejects.toThrow(
+    "boom",
+  )
+  await expect(
+    retryTransient({ run: started.run, failureOf: (v) => v, canRetry: () => false, signal }),
+  ).rejects.toThrow("database is locked")
+  expect(other.calls.count).toBe(1)
+  expect(started.calls.count).toBe(1)
+})
+
 test("container service failures retry once; other errors and started turns never retry", async () => {
   const service = outcomes(["failed to list containers (XPC connection error: Connection invalid)"])
   await retryTransient({
