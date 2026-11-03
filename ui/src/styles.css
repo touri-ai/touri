@@ -3899,6 +3899,7 @@ button.brand-button:hover:not(:disabled) {
 .chat-message-list .message-actions > :is(time, .user-message-actions),
 .chat-message-list .message-bubble[data-message-author="bot"] .message-meta time {
   opacity: 0;
+  pointer-events: none;
   transition: opacity var(--duration-standard) var(--ease-standard);
 }
 .chat-message-list .message-bubble:is(:hover, :focus-within) .message-actions > :is(time, .user-message-actions),
@@ -3906,10 +3907,15 @@ button.brand-button:hover:not(:disabled) {
 .chat-message-list .message-actions:has(.user-message-editor) > .user-message-actions,
 .chat-message-list .message-routine-prompt .message-actions > .user-message-actions {
   opacity: 1;
+  pointer-events: auto;
 }
 @media (hover: none) {
-  .chat-message-list .message-actions > :is(.user-message-actions) {
-    opacity: 1;
+  .chat-message-list
+    .message-bubble:not(:focus-within, .message-routine-prompt)
+    .message-actions:not(:has(.user-message-editor))
+    > .user-message-actions {
+    opacity: 0;
+    pointer-events: none;
   }
 }
 .chat-message-list .routine-run-marker {
@@ -4616,14 +4622,17 @@ button.brand-button:hover:not(:disabled) {
 
 .chat-message-list .message-start-thread > button {
   opacity: 0;
+  pointer-events: none;
   transition: opacity var(--duration-standard) var(--ease-standard);
 }
 .chat-message-list .message-bubble:is(:hover, :focus-within) .message-start-thread > button {
   opacity: 1;
+  pointer-events: auto;
 }
 @media (hover: none) {
-  .chat-message-list .message-start-thread > button {
-    opacity: 1;
+  .chat-message-list .message-bubble:not(:focus-within) .message-start-thread > button {
+    opacity: 0;
+    pointer-events: none;
   }
 }
 .message-start-thread button,
@@ -4679,4 +4688,8 @@ button.brand-button:hover:not(:disabled) {
   margin: var(--space-4) 0 0;
   font-size: var(--fs-body);
   overflow-wrap: anywhere;
+}
+
+.chat-message-list .message-bubble:focus {
+  outline: none;
 }

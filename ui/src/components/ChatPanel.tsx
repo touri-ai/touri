@@ -1443,6 +1443,7 @@ const MessageBubbleRow = ({
   const bubble = (
     <article
       ref={root}
+      tabIndex={-1}
       className={`message-bubble ${messageClass}${routinePrompt ? " message-routine-prompt" : ""}${quietBrowserNarration ? " message-browser-narration" : ""}`}
       data-work-message={work || undefined}
       data-message-failed={message.status === "failed" || undefined}

@@ -81,6 +81,8 @@ test.describe("touch message thread", () => {
     const reply = page.locator('[data-message-row="thread-demo-reply"]')
     const action = reply.getByRole("button", { name: "Iniciar thread" })
 
+    await expect(action).toHaveCSS("opacity", "0")
+    await reply.locator(".message-body").tap()
     await expect(action).toHaveCSS("opacity", "1")
     await action.tap()
     await expect(page.locator('[data-message-row="context-thread-demo-reply"]')).toBeVisible()
