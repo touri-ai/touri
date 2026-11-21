@@ -99,3 +99,25 @@ test("drawer slides in and out smoothly, and not at all with reduced motion", as
   await page.locator(".mobile-menu-button").click()
   expect(await slide()).toBe(0)
 })
+
+test("reopening the phone drawer reuses its channel and direct message rows", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" })
+  await openDrawer(page, "light", "work")
+  const drawer = page.getByRole("dialog", { name: "Barra lateral" })
+  const sidebar = page.locator(".sidebar-drawer .bot-sidebar")
+  const channel = sidebar.getByText("Planejamento", { exact: true })
+  const directMessage = sidebar.locator('[data-work-bot-entry="bot-mark"] .bot-row-main')
+  await expect(channel).toBeVisible()
+  await expect(directMessage).toBeVisible()
+  const originalChannel = await channel.elementHandle()
+  const originalDirectMessage = await directMessage.elementHandle()
+
+  await page.keyboard.press("Escape")
+  await expect(drawer).toBeHidden()
+  await expect(page.getByRole("navigation", { name: "Barra lateral" })).toHaveCount(0)
+  await page.locator(".mobile-menu-button").click()
+  await expect(drawer.getByRole("button", { name: "Fechar menu" })).toBeFocused()
+
+  expect(await channel.evaluate((element, original) => element === original, originalChannel)).toBe(true)
+  expect(await directMessage.evaluate((element, original) => element === original, originalDirectMessage)).toBe(true)
+})

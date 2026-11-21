@@ -424,10 +424,14 @@ export const NotificationBell = ({
     const closeOnEscape = (event: KeyboardEvent): void => {
       if (event.key === "Escape") setOpen(false)
     }
+    const drawer = container.current?.closest("dialog")
+    const closeWithDrawer = () => setOpen(false)
+    drawer?.addEventListener("close", closeWithDrawer)
     window.addEventListener("mousedown", close)
     window.addEventListener("keydown", closeOnEscape)
     window.addEventListener("resize", reposition)
     return () => {
+      drawer?.removeEventListener("close", closeWithDrawer)
       window.removeEventListener("mousedown", close)
       window.removeEventListener("keydown", closeOnEscape)
       window.removeEventListener("resize", reposition)

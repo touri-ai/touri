@@ -84,7 +84,8 @@ export const Modal = ({
     document.addEventListener("keydown", handleKey, true)
     return () => {
       document.removeEventListener("keydown", handleKey, true)
-      if (previous?.isConnected) previous.focus({ preventScroll: true })
+      if (previous?.isConnected && !previous.closest("[inert], dialog:not([open])"))
+        previous.focus({ preventScroll: true })
     }
   }, [])
   return (

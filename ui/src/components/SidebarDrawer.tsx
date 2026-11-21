@@ -1,9 +1,9 @@
-import { type ComponentProps, useEffect, useRef, useState, useSyncExternalStore } from "react"
+import { type ComponentProps, memo, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react"
 import { createPortal } from "react-dom"
 import { isNewBotShortcut, isPaletteShortcut } from "../features/commandPalette/shortcut"
 import { t } from "../i18n"
 import { Sidebar } from "./BotSidebar"
-import { ThreadDeletionNotice, useThreadDeletion } from "./useThreadDeletion"
+import { type ThreadDeletion, ThreadDeletionNotice, useThreadDeletion } from "./useThreadDeletion"
 
 const query = "(max-width: 620px)"
 const subscribe = (changed: () => void) => {
@@ -13,43 +13,63 @@ const subscribe = (changed: () => void) => {
 }
 const isNarrow = () => window.matchMedia(query).matches
 
-type SidebarDrawerProps = ComponentProps<typeof Sidebar> & { panelOpen?: boolean; workspaceHeader?: HTMLElement | null }
+type SidebarProps = ComponentProps<typeof Sidebar>
+type MobileMenuProps = { panelOpen?: boolean | undefined; workspaceHeader?: HTMLElement | null | undefined }
+type SidebarDrawerProps = SidebarProps & MobileMenuProps
 
-export const SidebarDrawer = ({ panelOpen = false, workspaceHeader = null, ...props }: SidebarDrawerProps) => {
-  const deletion = useThreadDeletion(props)
+// Opening the dialog should not rerender the mounted sidebar.
+const DrawerSidebar = memo(Sidebar)
+
+export const SidebarDrawer = ({ panelOpen, workspaceHeader, ...sidebar }: SidebarDrawerProps) => {
+  const deletion = useThreadDeletion(sidebar)
   const narrow = useSyncExternalStore(subscribe, isNarrow)
+  if (!narrow)
+    return (
+      <>
+        <Sidebar {...sidebar} threadDeletion={deletion} />
+        <ThreadDeletionNotice deletion={deletion} />
+      </>
+    )
+
+  return (
+    <MobileSidebarDrawer
+      sidebar={sidebar}
+      deletion={deletion}
+      panelOpen={panelOpen}
+      workspaceHeader={workspaceHeader}
+    />
+  )
+}
+
+const MobileSidebarDrawer = ({
+  sidebar,
+  deletion,
+  panelOpen = false,
+  workspaceHeader = null,
+}: { sidebar: SidebarProps; deletion: ThreadDeletion } & MobileMenuProps) => {
   const [open, setOpen] = useState(false)
   const dialog = useRef<HTMLDialogElement>(null)
   const trigger = useRef<HTMLButtonElement>(null)
-  const close = () => {
+  const close = useCallback(() => {
     dialog.current?.close()
     setOpen(false)
     trigger.current?.focus({ preventScroll: true })
-  }
+  }, [])
+
   useEffect(() => {
-    if (!narrow) {
-      setOpen(false)
-      return
-    }
     if (!open) return
     const element = dialog.current
     element?.showModal()
     element?.querySelector<HTMLButtonElement>(".sidebar-close")?.focus()
     return () => element?.close()
-  }, [narrow, open])
-  if (!narrow)
-    return (
-      <>
-        <Sidebar {...props} threadDeletion={deletion} />
-        <ThreadDeletionNotice deletion={deletion} />
-      </>
-    )
+  }, [open])
+
   const menuButton = (
     <button
       ref={trigger}
       type="button"
       className="toolbar-icon mobile-menu-button"
-      hidden={panelOpen && narrow}
+      hidden={panelOpen}
       aria-label={t("Open menu")}
       aria-expanded={open}
       aria-controls="workspace-sidebar-drawer"
@@ -79,12 +99,17 @@ export const SidebarDrawer = ({ panelOpen = false, workspaceHeader = null, ...pr
         className="sidebar-drawer"
         aria-label={t("Workspace sidebar")}
         aria-modal="true"
+        inert={!open}
         onCancel={(event) => {
           event.preventDefault()
           close()
         }}
         onKeyDown={(event) => {
-          if (isPaletteShortcut(event.nativeEvent) || isNewBotShortcut(event.nativeEvent)) close()
+          if (isPaletteShortcut(event.nativeEvent) || isNewBotShortcut(event.nativeEvent)) {
+            // A nested dialog owns the keyboard and may keep the shortcut from opening a new view.
+            if (!event.currentTarget.querySelector(".modal-card, [role='alertdialog']")) close()
+            return
+          }
           // A modal dialog makes the page inert but lets Tab leave for the browser chrome; keep it in the drawer.
           if (event.key !== "Tab") return
           const focusable = [
@@ -107,12 +132,8 @@ export const SidebarDrawer = ({ panelOpen = false, workspaceHeader = null, ...pr
           if (event.target === event.currentTarget) close()
         }}
       >
-        {open && (
-          <>
-            <Sidebar {...props} threadDeletion={deletion} onNavigate={close} />
-            <ThreadDeletionNotice deletion={deletion} />
-          </>
-        )}
+        <DrawerSidebar {...sidebar} threadDeletion={deletion} onNavigate={close} />
+        {open && <ThreadDeletionNotice deletion={deletion} />}
       </dialog>
       {!open && <ThreadDeletionNotice deletion={deletion} />}
     </>
